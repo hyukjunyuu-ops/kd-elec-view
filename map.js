@@ -313,12 +313,14 @@ function mapCard() {
     <div class="mpS2">전원 설비</div><ul>${src.map(n => `<li><a data-mpgo="${esc(n.id)}">${esc(label(n))}${n.kw ? ' ' + esc(n.kw) + 'kW' : ''}</a> → ${byId(n.link) ? esc(bk(byId(n.link)) + ' ' + label(byId(n.link))) : '<i>공급 위치 조사 중</i>'}</li>`).join('') || '<li class="muted">없음</li>'}
       ${feedsMe.filter(n => bk(n) !== bld).map(n => `<li>⚡ ${esc(bk(n))} ${esc(label(n))}에서 비상 전원 받음</li>`).join('')}</ul>
     <div class="mpBt ed"><button data-mpadd="GEN">+ 발전기</button><button data-mpadd="PV">+ 태양광</button><button data-mpadd="ESS">+ ESS</button></div>
-    <div class="mpBt">${N.length ? `<button data-mpa="flow" class="pri">⚡ 전기 Flow에서 보기</button><button data-mpa="tree">🌲 트리에서 이 동만</button>` : ''}</div>
+    <div class="mpBt"><button data-mpa="inside" class="pri">🏢 건물 안 보기 (층별·현황)</button></div>
+    <div class="mpBt">${N.length ? `<button data-mpa="flow">⚡ 전기 Flow에서 보기</button><button data-mpa="tree">🌲 트리에서 이 동만</button>` : ''}</div>
     ${MAP.edit ? `<label class="mpS2">이 건물의 동 (데이터 이름)<select data-mpbm="${b.id}">${S.blds.map(x => `<option${x === bld ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select></label>` : ''}</div>`;
 }
 
 /* ---------- 화면 ---------- */
 function mapView() {
+  if (typeof BV !== 'undefined' && BV.b) return bvView();   // 건물 안 보기
   const S6 = mapSteps(), st = S6[MAP.step] || S6[0], sc = MAP.step > 0;
   const lay = [['hv', '고압 22.9·3.3kV', '#ea580c'], ['lv', '저압 380·220V', '#2563eb'], ['em', '비상 전원', '#dc2626']];
   return `<div class="mpBar"><h2>공장 지도</h2><span class="mpLay">${lay.map(([k, l, c]) => `<button data-mpl="${k}" class="${MAP.lay[k] ? 'on' : ''}"><i style="background:${c}"></i>${l}</button>`).join('')}</span><span class="sp"></span>
