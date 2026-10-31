@@ -1,0 +1,82 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>전기계통 관리 · 종근당 천안공장</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div id="logo" title="눌러서 로고 넣기/바꾸기">CKD</div>
+  <div class="ttl"><b>전기계통 관리</b><small>종근당 천안공장</small></div>
+  <div class="menu" id="mFile"><button id="bFile">📁 파일 ▾</button>
+    <div class="mList" hidden>
+      <button id="bExp">💾 백업 받기 (JSON)</button>
+      <button id="bImp">📂 백업 불러오기</button>
+      <hr>
+      <button id="bXo">📤 일괄 수정용 엑셀(CSV) 받기</button>
+      <button id="bXi">📥 수정한 엑셀(CSV) 올리기</button>
+      <button id="bCmp">🔍 백업 파일과 비교</button>
+      <button id="bCsv">📋 전체 목록 CSV</button>
+      <hr>
+      <button id="bReset" class="dng">초기화</button>
+    </div>
+  </div>
+  <span class="edOnly"><select id="rootT" title="최상위 항목 종류"></select><button id="bRoot" class="pri">+ 최상위 항목</button></span>
+  <span class="sp"></span>
+  <span id="status"></span><span id="bkAge"></span>
+  <button id="bEdit" title="입력·추가·삭제·배치를 하려면 켜세요">✎ 편집</button>
+  <input type="file" id="fImp" accept=".json,application/json" hidden>
+  <input type="file" id="fLogo" accept="image/*" hidden>
+  <input type="file" id="fXi" accept=".csv,text/csv" hidden>
+  <input type="file" id="fCmp" accept=".json,application/json" hidden>
+</header>
+<div id="bldBar"></div>
+<main>
+  <section id="left" class="card">
+    <div id="lTabs"><button data-lt="tree">계통 트리</button><button data-lt="fav">★ 즐겨찾기<i id="favCnt"></i></button></div>
+    <div class="top">
+      <input id="search" placeholder="검색 (번호·명칭·형식·위치)">
+      <button id="tAll" title="모두 접기">⊟</button>
+      <button id="tEdit">✎ 편집</button>
+    </div>
+    <div id="editBar" hidden></div>
+    <div id="tree"></div>
+    <div id="favBox"></div>
+  </section>
+  <section id="center" class="card">
+    <div id="tabs">
+      <button data-t="map">공장 지도</button>
+      <button data-t="sld">전기 Flow</button>
+      <button data-t="dg">분전반</button>
+      <button data-t="plan">위치 도면</button>
+      <button data-t="chk">점검·보고서</button>
+    </div>
+    <div id="view"></div>
+  </section>
+  <section id="right" class="card"><div id="form"></div></section>
+</main>
+<div id="toast" hidden><span id="tMsg"></span><button id="tUndo">되돌리기</button><button id="tX">✕</button></div>
+<datalist id="dlV"></datalist>
+<script src="data.js"></script>
+<script src="tree.js"></script>
+<script src="panel.js"></script>
+<script src="plan.js"></script>
+<script src="fav.js"></script>
+<script src="flow.js"></script>
+<script src="flow-impact.js"></script>
+<script src="app.js"></script>
+<script src="sub-export.js"></script>
+<script src="filter.js"></script>
+<script src="check.js"></script>
+<script src="power.js"></script>
+<script src="sld.js"></script>
+<script src="map.js"></script>
+<script src="tools.js"></script>
+<script src="report.js"></script>
+<script src="ui.js"></script>
+<script src="mobile.js"></script>
+</body>
+</html>
