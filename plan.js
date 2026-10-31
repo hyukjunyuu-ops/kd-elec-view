@@ -65,7 +65,7 @@ const PL={cur:'',z:1,edit:false,tool:'',place:null,lastSel:null,keep:false,img:{
 try{const o=JSON.parse(localStorage.getItem('ckd_elec2_plan')||'{}');PL.cur=o.cur||'';PL.z=o.z||1;}catch(e){}
 function plKeep(){try{localStorage.setItem('ckd_elec2_plan',JSON.stringify({cur:PL.cur,z:PL.z}));}catch(e){}}
 const r2d=v=>Math.round(v*100)/100;
-const PL_P=t=>t==='PNL'||t==='UPS';
+const PL_P=t=>t==='PNL'||t==='UPS'||t==='MDB'||t==='MCC';
 const plFK=f=>'F|'+f,plZK=(id,s)=>'Z|'+id+'|'+s;
 function plParse(k){const a=String(k||'').split('|');return a[0]==='Z'?{z:1,id:a[1],s:+a[2]||1}:a[0]==='F'?{f:a.slice(1).join('|')}:null;}
 const plOnF=n=>n.floor&&n.x!==''&&n.x!=null;

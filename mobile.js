@@ -1,7 +1,7 @@
 /* =========================================================
    mobile.js — 핸드폰 화면 (폭 760px 이하에서 자동)
    - 아래쪽 [🌲 계통] [🗺 화면] [ℹ 정보] 로 한 번에 한 화면
-   - 트리에서 항목을 누르면 정보로, 정보에서 [분전반 보기]·[단선도에서 보기]
+   - 트리에서 항목을 누르면 정보로, 정보에서 [회로도]·[단선도에서 보기]
    - 동 줄·탭은 옆으로 밀어서, 그림은 손가락으로 이동·확대
    ========================================================= */
 
@@ -26,7 +26,7 @@ function mbApply() {
 function mbJump(n) {
   if (!MB.on || !n) return '';
   const box = FP_BOX[n.type] || n.type === 'MDB' || kids(n.id).length;
-  return `<div class="mbJump">${box ? `<button data-mbgo="dg">▦ 분전반 보기</button>` : ''}<button data-mbgo="sld">⚡ 단선도에서 보기</button><button data-mbgo="map">🗺 지도</button></div>`;
+  return `<div class="mbJump">${box ? `<button data-mbgo="dg">▦ 회로도</button>` : ''}<button data-mbgo="sld">⚡ 단선도에서 보기</button><button data-mbgo="map">🗺 지도</button></div>`;
 }
 
 (function () {

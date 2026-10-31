@@ -67,7 +67,7 @@ const CK_RULES = [
   ['phs', '상 미지정', '단상 회로의 R/S/T 확인', n => ckCircuit(n) && !ckSpare(n) && ckSingle(n) && !/^[RST]$/.test(n.phase || '')],
   ['ovr', '상위보다 큰 정격', '하위 차단기 정격이 상위 반 메인보다 큼 — 입력 오류 또는 협조 확인', n => {
     if (!ckAmp(n)) return false; const h = ckHost(n); return !!(h && ckAmp(h) && ckAmp(n) > ckAmp(h)); }],
-  ['plc', '도면 미배치', '위치 도면에 아직 안 찍힌 반', n => !!CK_PANEL[n.type] && !ckPlaced(n)],
+  ['plc', '도면 미배치', '배전반/분전반/MCC반 도면에 아직 안 찍힌 반', n => !!CK_PANEL[n.type] && !ckPlaced(n)],
   ['bld', '동 미지정', '어느 동인지 지정 안 됨', n => !effBld(n)],
 ];
 const CK = {on: null, bld: ''};
