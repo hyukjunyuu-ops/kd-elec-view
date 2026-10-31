@@ -58,7 +58,8 @@ const MAP_CARS = (() => {
   return c;
 })();
 
-const MAP = {step: 0, auto: false, edit: false, selB: '', drag: null};
+const MAP = {step: 0, auto: false, edit: false, selB: '', drag: null, lay: {hv: 1, lv: 0, em: 1}};
+try { Object.assign(MAP.lay, JSON.parse(localStorage.getItem('ckd_elec2_maplay') || '{}')); } catch (e) {}
 let _mapT = 0;
 
 const mapCfg = () => { S.cfg.map = S.cfg.map || {}; const m = S.cfg.map; m.pos = m.pos || {}; m.bmap = m.bmap || {}; return m; };
@@ -69,9 +70,11 @@ const mapKepco = () => mapCfg().kepco || MAP_KEPCO;
 
 /* ---------- 데이터에서 흐름 뽑기 ---------- */
 // 동 → 동 (상위가 다른 동인 곳) · 한전 → 최상위가 있는 동
+// 동 → 동 흐름 (전압별로 따로) · v = 넘어가는 전압, cls = hv(1kV 이상) / lv
 function mapEdges() {
   const E = new Map();
-  const add = (a, b, p, n) => { const k = a + '>' + b; if (!E.has(k)) E.set(k, {a, b, f: []}); E.get(k).f.push({p, n}); };
+  const add = (a, b, p, n) => { const v = (p ? outV(p) : effV(n)) || '?', k = a + '>' + b + '>' + v;
+    if (!E.has(k)) E.set(k, {a, b, v, cls: pV(v) >= 1000 ? 'hv' : 'lv', f: []}); E.get(k).f.push({p, n}); };
   S.nodes.forEach(n => {
     if (FP_SRC[n.type]) return;
     const p = par(n), b = bk(n);
@@ -80,6 +83,18 @@ function mapEdges() {
     const a = bk(p); if (a !== b && mapByBld(a)) add(a, b, p, n);
   });
   return [...E.values()];
+}
+// 그 동으로 들어오는 전원 경로: 한전부터 그 동의 첫 항목까지 (동 안에서 시작하는 것 포함)
+function mapPaths(bld) {
+  const ent = S.nodes.filter(n => !FP_SRC[n.type] && !isSlot(n) && bk(n) === bld && (!par(n) || bk(par(n)) !== bld));
+  const P = ent.map(n => ({n, chain: pathOf(n)}));
+  P.sort((a, b) => pV(inV(b.n) || effV(b.n)) - pV(inV(a.n) || effV(a.n)) || a.chain.length - b.chain.length);
+  const pairs = new Set(), blds = new Set([bld]);
+  P.forEach(({chain}) => { const bs = chain.map(bk).filter((b, i, a) => !i || a[i - 1] !== b); pairs.add('@kepco>' + bs[0]); bs.forEach((b, i) => { blds.add(b); if (i) pairs.add(bs[i - 1] + '>' + b); }); });
+  // 이 경로 어딘가로 들어오는 발전기 등
+  const on = new Set(P.flatMap(p => p.chain.map(x => x.id)));
+  const srcs = S.nodes.filter(n => FP_SRC[n.type] && n.link && (on.has(n.link) || bk(byId(n.link) || {}) === bld));
+  return {paths: P, pairs, blds, srcs};
 }
 function mapSrcs() { return S.nodes.filter(n => FP_SRC[n.type]); }
 // 정전 계산 (fpage.js 엔진 재사용)
@@ -155,6 +170,7 @@ function mapSvg(opt) {
   const st = OUT ? {k: 'live'} : mapSteps()[MAP.step] || mapSteps()[0], k = st.k;
   const black = ['cut', 'start', 'feed', 'other'].includes(k), feed = ['feed', 'other'].includes(k);
   const P = mapPower(black), edges = mapEdges(), srcs = mapSrcs();
+  const FOC = !OUT && MAP.selB ? mapPaths(mapBldOf(MAP.selB)) : null;   // 건물을 골랐으면 그 동 전원 경로만 강조
   const cnt = {}, emN = {}, pnl = {}, dN = {}, dP = {};
   S.nodes.forEach(n => { const b = bk(n); if (isSlot(n) || (OUT && P.off.has(n.id))) return; cnt[b] = (cnt[b] || 0) + 1; if (FP_BOX[n.type]) pnl[b] = (pnl[b] || 0) + 1; if (feed && P.emer.has(n.id) && !FP_SRC[n.type]) emN[b] = (emN[b] || 0) + 1;
     if (OUT && !FP_SRC[n.type] && !P.alive.has(n.id) && !P.off.has(n.id)) { dN[b] = (dN[b] || 0) + 1; if (FP_BOX[n.type]) dP[b] = (dP[b] || 0) + 1; } });
@@ -193,17 +209,22 @@ function mapSvg(opt) {
   const top = b => { const t = mP(b.c[0], b.c[1], b.h); return [t[0], t[1] - 6]; };
   const end = id => id === '@kepco' ? [kx, ky - 84] : top(mapByBld(id));
   const tags = [];
+  // 같은 두 동 사이에 전압이 여러 개면 곡선 높이를 조금씩 달리
+  const nth = {};
   edges.forEach(e => {
-    const A = end(e.a), B = end(e.b), dist = Math.hypot(B[0] - A[0], B[1] - A[1]);
-    const cx = (A[0] + B[0]) / 2, cy = Math.min(A[1], B[1]) - 40 - dist * .22;
-    const c = fpLineCol(e.f[0].n), w = 4 + Math.min(5, e.f.length) * 1.6, on = !black && !(OUT && e.f.every(f => !P.alive.has(f.n.id)));
+    const foc = FOC && FOC.pairs.has(e.a + '>' + e.b);
+    if (!OUT && !foc && !MAP.lay[e.cls]) return;          // 꺼 둔 레이어
+    const A = end(e.a), B = end(e.b), dist = Math.hypot(B[0] - A[0], B[1] - A[1]), j = nth[e.a + e.b] = (nth[e.a + e.b] || 0) + 1;
+    const cx = (A[0] + B[0]) / 2, cy = Math.min(A[1], B[1]) - 40 - dist * .22 - (j - 1) * 26;
+    const c = fpLineCol(e.f[0].n), w = 4 + Math.min(5, new Set(e.f.map(f => f.p && f.p.id)).size) * 1.6, on = !black && !(OUT && e.f.every(f => !P.alive.has(f.n.id)));
     const d = `M${A[0]} ${A[1]} Q${cx} ${cy} ${B[0]} ${B[1]}`;
-    o.push(`<g class="mpE" pointer-events="none" opacity="${on ? 1 : .3}"><path d="${d}" fill="none" stroke="#fff" stroke-width="${w + 5}" stroke-linecap="round" opacity=".85"/>`,
+    const op = FOC && !foc ? .1 : on ? 1 : .3;
+    o.push(`<g class="mpE" pointer-events="none" opacity="${op}"><path d="${d}" fill="none" stroke="#fff" stroke-width="${w + 5}" stroke-linecap="round" opacity=".85"/>`,
       `<path d="${d}" fill="none" stroke="${on ? c.c : '#9ca3af'}" stroke-width="${w}" stroke-linecap="round"/>`,
       on ? `<path d="${d}" fill="none" stroke="#fff" stroke-width="${Math.max(2, w / 2.6)}" stroke-dasharray="3 20" stroke-linecap="round"><animate attributeName="stroke-dashoffset" from="46" to="0" dur="1.1s" repeatCount="indefinite"/></path>` : '',
       `<circle cx="${B[0]}" cy="${B[1]}" r="${w / 2 + 2}" fill="${on ? c.c : '#9ca3af'}" stroke="#fff" stroke-width="2"/></g>`);
-    const names = e.a === '@kepco' ? null : e.f.map(f => label(f.p)).filter((v, i, a) => a.indexOf(v) === i);
-    const tx = names ? (names.length > 3 ? names.slice(0, 3).join('·') + ` 외 ${names.length - 3}` : names.join('·')) + ` (${names.length}회선)` : '22.9kV 인입';
+    if (FOC && !foc) return;                                // 강조 중이면 다른 선 꼬리표는 숨김
+    const k = new Set(e.f.map(f => f.p && f.p.id)).size, tx = e.a === '@kepco' ? `${e.v} 인입` : `${e.v} · ${k}회선`;
     tags.push(`<g class="mpE" pointer-events="none"><rect x="${cx - tx.length * 3.9 - 8}" y="${(A[1] + 2 * cy + B[1]) / 4 - 11}" width="${tx.length * 7.8 + 16}" height="21" rx="10.5" fill="#fff" stroke="${on ? c.c : '#d4d4d8'}" stroke-width="1.5"/><text x="${cx}" y="${(A[1] + 2 * cy + B[1]) / 4 + 4}" text-anchor="middle" font-size="11.5" fill="#334155">${esc(tx)}</text></g>`);
   });
 
@@ -213,9 +234,9 @@ function mapSvg(opt) {
     const bld = mapBldOf(b.id), nm = mapName(b), n = cnt[bld] || 0, em = emN[bld] > 0;
     const [x, y] = mP((b.x0 + b.x1) / 2, b.y1, b.h);
     const sub = b.small ? '' : OUT ? (cutOf(bld) ? `⛔ 정전 · 분전반 ${dP[bld] || 0}` : partOf(bld) ? `⚠ 일부 정전 · 분전반 ${dP[bld] || 0}/${pnl[bld] || 0}개 정전` : n ? '정상' : '')
-      : em ? `⚡ 비상 전원 ${emN[bld]}곳` : black ? '정전' : n ? `분전반 ${pnl[bld] || 0} · 항목 ${n}` : '데이터 없음';
+      : em ? `⚡ 비상 전원 ${emN[bld]}곳` : black ? '정전' : '';
     const fs = b.small ? 11.5 : 14, w = Math.max(nm.length * fs + 26, sub.length * 7 + 16), hgt = sub ? 36 : 22;
-    LB[b.id] = {b, bld, nm, n, em, x, ly: y - (b.small ? 30 : 46), w, hgt, sub, fs, cut: cutOf(bld), part: partOf(bld)};
+    LB[b.id] = {b, bld, nm, n, em, x, ly: y - (b.small ? 30 : sub ? 46 : 34), w, hgt, sub, fs, cut: cutOf(bld), part: partOf(bld), dim: FOC && !FOC.blds.has(bld)};
   });
   // 설비 자리: 끌어다 놓은 건 그 바닥 위에 기둥, 아니면 그 동 이름표 오른쪽에 배지로
   const SP = new Map(), slot = {};
@@ -228,6 +249,7 @@ function mapSvg(opt) {
   // 발전기·태양광·ESS → 공급 위치 (빨간 점선 호)
   srcs.forEach(n => {
     const t = byId(n.link), tb = t && mapByBld(bk(t)); if (!tb) return;
+    if (!OUT && !(FOC ? FOC.srcs.includes(n) : MAP.lay.em || feed)) return;
     const A = SP.get(n.id), B = top(tb), run = P.src[n.id] === 'run' && feed;
     const d = `M${A.x} ${A.y} Q${(A.x + B[0]) / 2} ${Math.min(A.y, B[1]) - 50} ${B[0]} ${B[1]}`;
     o.push(`<path pointer-events="none" d="${d}" fill="none" stroke="${run ? '#dc2626' : '#fca5a5'}" stroke-width="${run ? 6 : 2.5}" stroke-dasharray="${run ? '14 9' : '6 6'}" stroke-linecap="round">${run ? '<animate attributeName="stroke-dashoffset" from="46" to="0" dur="1s" repeatCount="indefinite"/>' : ''}</path>`);
@@ -236,7 +258,7 @@ function mapSvg(opt) {
   o.push(...tags);
   Object.values(LB).forEach(L => {
     const {b, x, ly, w, hgt, sub, fs, n} = L, em = L.em || L.cut, dot = em ? '#dc2626' : L.part ? '#f97316' : black ? '#9ca3af' : n ? '#22c55e' : '#cbd5e1';
-    o.push(`<g class="mpB" data-mpb="${b.id}" style="cursor:pointer"><rect x="${x - w / 2}" y="${ly}" width="${w}" height="${hgt}" rx="7" fill="${em ? '#fff1f2' : L.part ? '#fff7ed' : '#fff'}" stroke="${em ? '#dc2626' : L.part ? '#f97316' : !OUT && MAP.selB === b.id ? '#262f7d' : '#cbd5e1'}" stroke-width="${MAP.selB === b.id || em || L.part ? 2 : 1}" opacity=".96"/>
+    o.push(`<g class="mpB" data-mpb="${b.id}" style="cursor:pointer" opacity="${L.dim ? .45 : 1}"><rect x="${x - w / 2}" y="${ly}" width="${w}" height="${hgt}" rx="7" fill="${em ? '#fff1f2' : L.part ? '#fff7ed' : '#fff'}" stroke="${em ? '#dc2626' : L.part ? '#f97316' : !OUT && MAP.selB === b.id ? '#262f7d' : '#cbd5e1'}" stroke-width="${MAP.selB === b.id || em || L.part ? 2 : 1}" opacity=".96"/>
       <circle cx="${x - w / 2 + 11}" cy="${ly + 11}" r="4.5" fill="${dot}"/><text x="${x + 5}" y="${ly + 15}" text-anchor="middle" font-size="${fs}" font-weight="bold" fill="#0f172a">${esc(L.nm)}</text>
       ${sub ? `<text x="${x}" y="${ly + 30}" text-anchor="middle" font-size="10.5" font-weight="${OUT && (em || L.part) ? 'bold' : 'normal'}" fill="${em ? '#b91c1c' : L.part ? '#c2410c' : OUT && n ? '#15803d' : '#64748b'}">${esc(sub)}</text>` : ''}
       <line x1="${x}" y1="${ly + hgt}" x2="${x}" y2="${ly + hgt + 8}" stroke="#94a3b8"/></g>`);
@@ -276,10 +298,17 @@ function mapCard() {
   const inn = E.filter(e => e.b === bld), out = E.filter(e => e.a === bld);
   const ty = t => N.filter(n => n.type === t).length;
   const src = N.filter(n => FP_SRC[n.type]), feedsMe = S.nodes.filter(n => FP_SRC[n.type] && byId(n.link) && bk(byId(n.link)) === bld);
-  const li = e => e.a === '@kepco' ? '<li>한전 22.9kV 인입</li>' : e.f.map(f => `<li><a data-mpgo="${esc(f.n.id)}">${esc(e.a === bld ? bk(f.n) : e.a)} · ${esc(label(f.p))} → ${esc(label(f.n))}</a></li>`).join('');
+  const li = e => e.f.map(f => `<li><a data-mpgo="${esc(f.n.id)}">${esc(bk(f.n))} · ${esc(label(f.p))} → ${esc(label(f.n))}</a> <span class="muted">${esc(e.v)}</span></li>`).join('');
+  // 전원 경로: 한전 › … › 이 동 (동이 바뀌는 곳에 동 이름표)
+  const PA = mapPaths(bld), step = n => { const T = TYPES[n.type] || {c: '#64748b'}, sp = n.type === 'TR' ? [n.kva ? n.kva + 'kVA' : '', `${effV(n) || '?'}/${n.v2 || '?'}`].filter(Boolean).join(' ') : n.cbk || '';
+    return `<a data-mpgo="${esc(n.id)}" class="pc" style="border-color:${T.c}">${esc(label(n))}${sp ? `<small>${esc(sp)}</small>` : ''}</a>`; };
+  const chain = c => { let h = '<span class="pk">한전 22.9kV</span>', pb = '';
+    c.forEach(n => { const b2 = bk(n); if (b2 !== pb) { h += `<span class="pb" style="background:${fpBcol(b2)}">${esc(b2)}</span>`; pb = b2; } h += step(n); }); return h; };
+  const MAXP = 5;
   return `<div id="mpCard"><div class="mpH"><span class="x" data-mpa="close">✕</span><b>${esc(mapName(b))}</b>
     <div>${N.length ? `TR ${ty('TR')} · 분전반 ${N.filter(n => FP_BOX[n.type]).length} · 항목 ${N.length} · 비상 ${N.filter(n => effSrc(n) === 'E').length}` : '아직 이 동 데이터가 없어요'}</div></div>
-    ${inn.length ? `<div class="mpS2">받는 곳</div><ul>${inn.map(li).join('')}</ul>` : ''}
+    ${PA.paths.length ? `<div class="mpS2">전원 경로 · 어디서 오나</div><ol class="mpPath">${PA.paths.slice(0, MAXP).map(p => `<li>${chain(p.chain)}</li>`).join('')}</ol>${PA.paths.length > MAXP ? `<div class="muted" style="padding:0 12px">외 ${PA.paths.length - MAXP}개 경로</div>` : ''}` : ''}
+    ${PA.srcs.length ? `<div class="mpS2">⚡ 비상 전원</div><ul>${PA.srcs.map(n => `<li><a data-mpgo="${esc(n.id)}">${esc(bk(n))} ${esc(label(n))}${n.kw ? ' ' + esc(n.kw) + 'kW' : ''}</a> → ${esc(label(byId(n.link)))}</li>`).join('')}</ul>` : ''}
     ${out.length ? `<div class="mpS2">보내는 곳</div><ul>${out.map(li).join('')}</ul>` : ''}
     <div class="mpS2">전원 설비</div><ul>${src.map(n => `<li><a data-mpgo="${esc(n.id)}">${esc(label(n))}${n.kw ? ' ' + esc(n.kw) + 'kW' : ''}</a> → ${byId(n.link) ? esc(bk(byId(n.link)) + ' ' + label(byId(n.link))) : '<i>공급 위치 조사 중</i>'}</li>`).join('') || '<li class="muted">없음</li>'}
       ${feedsMe.filter(n => bk(n) !== bld).map(n => `<li>⚡ ${esc(bk(n))} ${esc(label(n))}에서 비상 전원 받음</li>`).join('')}</ul>
@@ -291,7 +320,8 @@ function mapCard() {
 /* ---------- 화면 ---------- */
 function mapView() {
   const S6 = mapSteps(), st = S6[MAP.step] || S6[0], sc = MAP.step > 0;
-  return `<div class="mpBar"><h2>공장 지도</h2><span class="muted">천안공장 전기가 어디서 와서 어디로 가는지</span><span class="sp"></span>
+  const lay = [['hv', '고압 22.9·3.3kV', '#ea580c'], ['lv', '저압 380·220V', '#2563eb'], ['em', '비상 전원', '#dc2626']];
+  return `<div class="mpBar"><h2>공장 지도</h2><span class="mpLay">${lay.map(([k, l, c]) => `<button data-mpl="${k}" class="${MAP.lay[k] ? 'on' : ''}"><i style="background:${c}"></i>${l}</button>`).join('')}</span><span class="sp"></span>
       <button data-mpa="png">🖼 PNG</button></div>
     <div class="mpSc">
       <div class="mpSt">${S6.map((s, i) => `<button data-mpst="${i}" class="${i === MAP.step ? 'on' : ''}${i ? ' bk' : ''}">${s.t}</button>`).join('')}</div>
@@ -330,6 +360,8 @@ document.addEventListener('click', e => {
   if (UI.tab !== 'map' || !e.target.closest || !e.target.closest('#view')) return;
   if (MAP.drag && MAP.drag.moved) return;
   const t = e.target;
+  const ly = t.closest('[data-mpl]');
+  if (ly) { const k = ly.dataset.mpl; MAP.lay[k] = MAP.lay[k] ? 0 : 1; try { localStorage.setItem('ckd_elec2_maplay', JSON.stringify(MAP.lay)); } catch (e2) {} renderView(); return; }
   const st = t.closest('[data-mpst]'); if (st) { MAP.auto = false; clearInterval(_mapT); mapGo(+st.dataset.mpst); return; }
   const a = t.closest('[data-mpa]');
   if (a) {
@@ -409,6 +441,15 @@ document.addEventListener('pointerup', e => {
 #mpW svg{display:block;width:100%;height:auto;user-select:none}body:not(.ro) #mpW svg{touch-action:none}
 #mpW .mpB:hover polygon:first-of-type{stroke-width:5}
 #mpCard{position:absolute;top:10px;right:10px;width:290px;max-height:calc(100% - 20px);overflow:auto;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 6px 20px rgba(15,23,42,.18);font-size:12.5px}
+#view .mpLay{display:flex;flex-wrap:wrap;gap:4px;margin-left:8px}
+#view .mpLay button{padding:4px 10px;border:1px solid #d6dbe8;background:#fff;border-radius:999px;font-size:12px;cursor:pointer;color:#94a3b8;display:inline-flex;align-items:center;gap:5px}
+#view .mpLay button i{display:inline-block;width:16px;height:4px;border-radius:2px;opacity:.35}
+#view .mpLay button.on{color:#0f172a;border-color:#94a3b8;background:#f8fafc}#view .mpLay button.on i{opacity:1}
+#mpCard ol.mpPath{margin:0;padding:2px 12px 4px 30px}#mpCard ol.mpPath li{margin:4px 0;line-height:1.9}
+#mpCard .pc{display:inline-flex;flex-direction:column;border:1.5px solid #cbd5e1;border-left-width:4px;border-radius:5px;padding:0 5px;margin:1px 2px;font-size:11.5px;color:#0f172a!important;line-height:1.3;vertical-align:middle;text-decoration:none}
+#mpCard .pc small{color:#64748b;font-size:10px}
+#mpCard .pc+.pc:before,#mpCard .pb+.pc:before{content:''}
+#mpCard .pk,#mpCard .pb{display:inline-block;font-size:10.5px;color:#fff;border-radius:999px;padding:1px 7px;margin:1px 2px;vertical-align:middle}#mpCard .pk{background:#7f1d1d}
 #mpCard .mpH{background:#262f7d;color:#fff;padding:9px 12px}#mpCard .mpH b{font-size:15px}#mpCard .mpH div{color:#c7d2fe;font-size:11.5px;margin-top:2px}
 #mpCard .x{float:right;cursor:pointer;opacity:.8}
 #mpCard .mpS2{display:block;font-weight:700;color:#262f7d;padding:8px 12px 2px}
