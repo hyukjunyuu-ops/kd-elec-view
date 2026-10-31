@@ -29,8 +29,8 @@ function rpHtml(D) {
   const has = c => cats.includes(c);
   const blds = Object.keys(D.byB).filter(b => { const r = D.byB[b]; return r.mdb + r.pnl + r.cir + r.imp; }).sort((a, b) => S.blds.indexOf(a) - S.blds.indexOf(b));
   // 단선도 (정전 범위가 회색으로)
-  const ob = FP.black; FP.black = false; let svg = ''; try { svg = sdSvg(sdLayout(), true); } finally { FP.black = ob; }
-  svg = svg.replace(/ width="\d+" height="\d+"/, ' width="100%"');
+  const ob = FP.black; FP.black = false; let svg = '', map = ''; try { svg = sdSvg(sdLayout(), true); map = mapSvg({outage: true}); } finally { FP.black = ob; }
+  svg = svg.replace(/ width="\d+" height="\d+"/, ' width="100%"'); map = map.replace('<svg ', '<svg width="100%" ');
   const chk = [
     '관련 팀에 정전 일시·범위 사전 공지 (아래 협조 팀)',
     has('저온창고') || has('냉장·냉동·챔버') ? '저온창고·냉장/냉동/챔버 온도 유지 대책 (사전 온도 확보, 문 개폐 최소화, 필요 시 이동 보관) · 정전 중 온도 기록' : '',
@@ -62,7 +62,8 @@ function rpHtml(D) {
    <tr><th>작업 내용</th><td colspan="3" contenteditable="true" class="ed" data-ph="작업 내용·사유"></td></tr></table>
   <h2>2. 정전 범위</h2><table><tr><th>내리는 차단기</th><th>위치 (경로)</th><th>동</th></tr>
    ${D.off.map(n => `<tr><td><b>${esc(label(n))}</b> ${n.cbk ? `<span class="sub">${esc(n.cbk)}</span>` : ''}</td><td>${esc(pathOf(n).slice(0, -1).map(label).join(' › '))}</td><td>${esc(bk(n))}</td></tr>`).join('')}</table>
-  <div class="dia" style="margin-top:8px">${svg}</div><div class="note">회색 = 정전되는 범위 (한전 ~ 배전반까지 그림. 그 아래 분전반·부하는 아래 표)</div>
+  <div class="dia" style="margin-top:8px">${map}</div><div class="note">빨강 = 정전 · 주황 = 일부 정전 · 초록 = 정상</div>
+  <div class="dia" style="margin-top:8px">${svg}</div><div class="note">수변전 단선도 — 회색 = 정전되는 범위 (전기 담당용)</div>
   <h2>3. 동별 영향</h2><table><tr><th>동</th><th class="n">배전반</th><th class="n">분전반·MCC</th><th class="n">회로</th><th class="n">중요 부하</th><th class="n">비상 계통 회로</th></tr>
    ${blds.map(b => { const r = D.byB[b]; return `<tr><td>${esc(b)}</td><td class="n">${r.mdb}</td><td class="n">${r.pnl}</td><td class="n">${r.cir}</td><td class="n">${r.imp ? `<b>${r.imp}</b>` : 0}</td><td class="n">${r.em ? `<span class="em">${r.em}</span>` : 0}</td></tr>`; }).join('')}</table>
   <h2>4. 중요 부하 (${D.imp.length})</h2>
@@ -105,7 +106,8 @@ const RP_TAGS = [
   ['{#중요부하}{번호} {분류} {동} {반} {명칭} {정격} {비고}{/중요부하}', '중요 부하 표 — 표 한 줄에 넣으면 줄 수만큼 반복'],
   ['{#동별}{동} {배전반} {분전반} {회로} {중요} {비상}{/동별}', '동별 영향 표 — 표 한 줄 반복'],
   ['{#협조팀}{팀} {개수}{/협조팀}', '협조 팀 표 — 표 한 줄 반복'],
-  ['그림 이름(대체 텍스트) = 단선도', '양식 속 아무 그림이나 대체 텍스트를 "단선도"로 하면 실제 단선도로 바뀜'],
+  ['그림 대체 텍스트 = 정전지도', '공장 지도에 정전 구역 표시 (빨강 정전 · 주황 일부 · 초록 정상) — 생산·일반용'],
+  ['그림 대체 텍스트 = 단선도', '수변전 단선도 (정전 범위 회색) — 전기 담당용'],
 ];
 function rpChecks(D) {
   const has = c => D.imp.some(n => n.imp === c);
@@ -134,10 +136,13 @@ function rpTags(D) {
     협조팀: D.teams.map(([팀, 개수]) => ({팀, 개수})),
   };
 }
-// 단선도 PNG (정전 범위 회색)
-function rpPng() {
+// 그림 PNG: 'map' = 공장 지도에 정전 구역 (생산·일반용) · 'sld' = 수변전 단선도 (전기 담당용)
+function rpPng(kind) {
   const ob = FP.black; FP.black = false; let L, s;
-  try { L = sdLayout(); s = sdSvg(L, true).replace(/ width="\d+" height="\d+"/, ` width="${L.W}" height="${L.H}"`); } finally { FP.black = ob; }
+  try {
+    if (kind === 'map') { L = {W: MAP_W, H: MAP_H}; s = mapSvg({outage: true}).replace('<svg ', `<svg width="${MAP_W}" height="${MAP_H}" `); }
+    else { L = sdLayout(); s = sdSvg(L, true).replace(/ width="\d+" height="\d+"/, ` width="${L.W}" height="${L.H}"`); }
+  } finally { FP.black = ob; }
   return new Promise((res, rej) => { const img = new Image(); img.onload = () => {
     const c = document.createElement('canvas'); c.width = L.W * 2; c.height = L.H * 2; const g = c.getContext('2d'); g.scale(2, 2); g.drawImage(img, 0, 0);
     c.toBlob(b => b ? b.arrayBuffer().then(a => res({buf: new Uint8Array(a), w: L.W, h: L.H})) : rej(new Error('그림 실패')), 'image/png'); };
@@ -147,23 +152,25 @@ function rpPng() {
 async function rpTplGet() { try { const t = await DB.get('kv', 'rpTpl'); if (t && t.b64) return t; } catch (e) {} return null; }
 const b64ToBuf = b => Uint8Array.from(atob(b), c => c.charCodeAt(0));
 const bufToB64 = u => { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
-// 이름이 '단선도'인 그림을 실제 단선도로
-function rpPutImage(zip, png) {
+// 이름(대체 텍스트)이 '정전지도' / '단선도'인 그림을 실제 그림으로
+function rpPutImage(zip, png, nm) {
   let x = zip.file('word/document.xml').asText();
-  const m = x.match(/<w:drawing>(?:(?!<\/w:drawing>)[\s\S])*?<wp:docPr[^>]*(?:descr|name|title)="단선도"[\s\S]*?<\/w:drawing>/);
+  const m = x.match(new RegExp(`<w:drawing>(?:(?!<\\/w:drawing>)[\\s\\S])*?<wp:docPr[^>]*(?:descr|name|title)="${nm}"[\\s\\S]*?<\\/w:drawing>`));
   if (!m) return false;
-  const dr = m[0], rid = (dr.match(/r:embed="([^"]+)"/) || [])[1]; if (!rid) return false;
+  const dr = m[0]; if (!/r:embed="[^"]+"/.test(dr)) return false;
+  // 그림마다 새 연결을 만들어서 넣음 (양식 속 그림 여러 개가 같은 파일을 같이 쓰고 있어도 안전)
+  const nid = 'rIdRp' + (nm === '단선도' ? 'Sld' : 'Map'), file = `media/rp_${nm === '단선도' ? 'sld' : 'map'}.png`;
   let rels = zip.file('word/_rels/document.xml.rels').asText();
-  const rel = rels.match(new RegExp(`<Relationship[^>]*Id="${rid}"[^>]*>`)); if (!rel) return false;
-  let target = (rel[0].match(/Target="([^"]+)"/) || [])[1];
-  if (!/\.png$/i.test(target)) {   // png가 아니면 새 파일로
-    const nt = 'media/sld_diagram.png'; rels = rels.replace(rel[0], rel[0].replace(/Target="[^"]+"/, `Target="${nt}"`)); zip.file('word/_rels/document.xml.rels', rels); target = nt;
-    let ct = zip.file('[Content_Types].xml').asText(); if (!/Extension="png"/i.test(ct)) { ct = ct.replace('<Types ', '<Types ').replace(/(<Types[^>]*>)/, '$1<Default Extension="png" ContentType="image/png"/>'); zip.file('[Content_Types].xml', ct); }
-  }
-  zip.file('word/' + target.replace(/^\/?word\//, ''), png.buf);
+  if (!rels.includes(`Id="${nid}"`)) rels = rels.replace('</Relationships>', `<Relationship Id="${nid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${file}"/></Relationships>`);
+  zip.file('word/_rels/document.xml.rels', rels);
+  let ct = zip.file('[Content_Types].xml').asText();
+  if (!/Extension="png"/i.test(ct)) { ct = ct.replace(/(<Types[^>]*>)/, '$1<Default Extension="png" ContentType="image/png"/>'); zip.file('[Content_Types].xml', ct); }
+  zip.file('word/' + file, png.buf);
+  let nd = dr.replace(/r:embed="[^"]+"/, `r:embed="${nid}"`);
   // 그림 비율 맞추기 (가로 그대로, 세로 조정)
   const cx = +((dr.match(/<wp:extent cx="(\d+)"/) || [])[1] || 0);
-  if (cx) { const cy = Math.round(cx * png.h / png.w); const nd = dr.replace(/(<wp:extent cx="\d+" cy=")\d+/, `$1${cy}`).replace(/(<a:ext cx="\d+" cy=")\d+/, `$1${cy}`); x = x.replace(dr, nd); zip.file('word/document.xml', x); }
+  if (cx) { const cy = Math.round(cx * png.h / png.w); nd = nd.replace(/(<wp:extent cx="\d+" cy=")\d+/, `$1${cy}`).replace(/(<a:ext cx="\d+" cy=")\d+/, `$1${cy}`); }
+  x = x.replace(dr, nd); zip.file('word/document.xml', x);
   return true;
 }
 async function rpWord() {
@@ -180,7 +187,7 @@ async function rpWord() {
     alert('양식을 채우지 못했어요.\n' + (er.length ? er.slice(0, 5).join('\n') : e.message) + '\n\n{ } 표시가 짝이 맞는지 확인하세요. ([표시 목록] 참고)'); return;
   }
   const z = doc.getZip();
-  try { rpPutImage(z, await rpPng()); } catch (e) { console.warn('단선도 그림 넣기 실패', e); }
+  for (const [nm, kind] of [['정전지도', 'map'], ['단선도', 'sld']]) { try { rpPutImage(z, await rpPng(kind), nm); } catch (e) { console.warn(nm + ' 그림 넣기 실패', e); } }
   const name = D.off.map(label).join('_').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40);
   download(z.generate({type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}), `계획정전_${name}_${stamp()}.docx`);
   toast(`계획정전 보고서(Word)를 받았어요${mine ? ` · 양식: ${mine.name}` : ' · 기본 양식'}. 1페이지 계획 내용은 Word에서 직접 쓰세요.`, false);
@@ -209,7 +216,7 @@ async function rpMenu() {
     <div class="rpRow"><span class="muted">양식:</span> <b>${mine ? esc(mine.name) : '기본 양식'}</b>
       <button data-rpa="tplset">양식 바꾸기 (.docx)</button>${mine ? '<button data-rpa="tplreset">기본 양식으로</button>' : ''}
       <button data-rpa="tplget">📥 기본 양식 받기 (꾸미기용)</button><button data-rpa="tags">📖 표시 목록</button></div>
-    <div class="rpRow"><span class="muted">AI·발표용:</span><button data-rpa="ai">📋 AI용 자료 복사</button><button data-rpa="png">🖼 단선도 그림</button><button data-rpa="csv">📊 영향 목록 엑셀</button><button data-rpa="view">👁 화면으로 보기</button></div>
+    <div class="rpRow"><span class="muted">AI·발표용:</span><button data-rpa="ai">📋 AI용 자료 복사</button><button data-rpa="map">🗺 정전 지도 그림</button><button data-rpa="png">🖼 단선도 그림</button><button data-rpa="csv">📊 영향 목록 엑셀</button><button data-rpa="view">👁 화면으로 보기</button></div>
     <div class="mdlA"><button data-mdl="x">닫기</button></div>`);
 }
 function rpTagsView() {
@@ -225,7 +232,8 @@ document.addEventListener('click', async e => {
   if (v === 'word') { uiModalClose(); rpWord(); }
   else if (v === 'view') { uiModalClose(); rpOpen(); }
   else if (v === 'ai') { await rpCopy(rpAiText(D)); toast('AI용 자료를 복사했어요. AI Word·PPT에 붙여 넣고 "이 자료로 계획정전 보고서 만들어줘"라고 하세요. 단선도 그림도 같이 넣으면 좋아요.', false); }
-  else if (v === 'png') { const p = await rpPng(); download(new Blob([p.buf], {type: 'image/png'}), `계획정전_단선도_${stamp()}.png`); }
+  else if (v === 'map') { const p = await rpPng('map'); download(new Blob([p.buf], {type: 'image/png'}), `계획정전_정전지도_${stamp()}.png`); }
+  else if (v === 'png') { const p = await rpPng('sld'); download(new Blob([p.buf], {type: 'image/png'}), `계획정전_단선도_${stamp()}.png`); }
   else if (v === 'csv') download(new Blob([rpCsv(D)], {type: 'text/csv'}), `계획정전_영향목록_${stamp()}.csv`);
   else if (v === 'tplget') download(new Blob([b64ToBuf(RP_TPL_B64)], {type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}), '계획정전_기본양식.docx');
   else if (v === 'tags') rpTagsView();

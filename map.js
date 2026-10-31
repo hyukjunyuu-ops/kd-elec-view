@@ -108,7 +108,7 @@ function mapSteps() {
 // 건물 블록 하나: 서쪽 벽 · 남쪽 벽(창·계단실·간판) · 지붕(장식)
 function mapBlock(k, st) {
   const [x0, y0, x1, y1] = k.r, h = k.h, o = [];
-  const dark = st.black && !st.em;
+  const dark = (st.black && !st.em) || st.cut;
   const wallF = dark ? '#c7ccd4' : '#fbfcfe', wallW = dark ? '#aeb4bd' : '#e3e8ef', blue = dark ? '#7b8798' : '#1f5fbf';
   const glass = st.em ? '#fca5a5' : dark ? '#55606f' : st.lit ? '#bcd6f5' : '#c9d6e6';
   // 서쪽 벽
@@ -132,7 +132,7 @@ function mapBlock(k, st) {
   if (k.sign) { const sx = fx0 + fw / 2; o.push(`<rect x="${sx - 62}" y="${ft - 24}" width="124" height="26" fill="#fff" stroke="${blue}" stroke-width="1.5"/><circle cx="${sx - 44}" cy="${ft - 11}" r="8" fill="${blue}"/><text x="${sx + 8}" y="${ft - 4}" text-anchor="middle" font-size="17" font-weight="bold" fill="${blue}">종근당</text>`); }
   // 지붕 (바닥 좌표 그대로 변환)
   o.push(`<g transform="translate(0,${-h}) ${MAP_GM}">`,
-    `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="${dark ? '#b8bec7' : k.roof}" stroke="${st.em ? '#dc2626' : st.sel ? '#262f7d' : '#7c8796'}" stroke-width="${st.em || st.sel ? 5 : 1.4}"${st.em ? ' stroke-dasharray="14 8"' : ''}/>`,
+    `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="${dark ? '#b8bec7' : k.roof}" stroke="${st.em || st.cut ? '#dc2626' : st.part ? '#f97316' : st.sel ? '#262f7d' : '#7c8796'}" stroke-width="${st.em || st.sel || st.cut || st.part ? 5 : 1.4}"${st.em || st.cut || st.part ? ' stroke-dasharray="14 8"' : ''}/>`,
     `<rect x="${x0 + 4}" y="${y0 + 4}" width="${x1 - x0 - 8}" height="${y1 - y0 - 8}" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="2"/>`);
   const W = x1 - x0, H = y1 - y0;
   if (k.deco === 'solar') for (let yy = y0 + 14; yy < y1 - 20; yy += 26) for (let xx = x0 + 14; xx < x1 - 24; xx += 30) o.push(`<rect x="${xx}" y="${yy}" width="26" height="20" fill="${dark ? '#475569' : '#1e3a8a'}" stroke="#93c5fd" stroke-width=".8"/>`);
@@ -149,12 +149,17 @@ function mapTree(x, y, r, st) {
   const [X, Y] = mP(x, y), c = st.black ? ['#7d8f78', '#6b7d66'] : ['#5f9e5a', '#4a8547'];
   return `<g><rect x="${X - 1.5}" y="${Y - r}" width="3" height="${r}" fill="#7c5a3a"/><circle cx="${X}" cy="${Y - r * 1.4}" r="${r}" fill="${c[0]}"/><circle cx="${X + r * .3}" cy="${Y - r * 1.2}" r="${r * .6}" fill="${c[1]}" opacity=".6"/></g>`;
 }
-function mapSvg() {
-  const st = mapSteps()[MAP.step] || mapSteps()[0], k = st.k;
+// opt.outage: 내린 차단기 기준으로 동마다 정전 / 일부 정전 / 정상 (계획정전 보고서 그림)
+function mapSvg(opt) {
+  const OUT = !!(opt && opt.outage);
+  const st = OUT ? {k: 'live'} : mapSteps()[MAP.step] || mapSteps()[0], k = st.k;
   const black = ['cut', 'start', 'feed', 'other'].includes(k), feed = ['feed', 'other'].includes(k);
   const P = mapPower(black), edges = mapEdges(), srcs = mapSrcs();
-  const cnt = {}, emN = {}, pnl = {};
-  S.nodes.forEach(n => { const b = bk(n); cnt[b] = (cnt[b] || 0) + 1; if (FP_BOX[n.type]) pnl[b] = (pnl[b] || 0) + 1; if (feed && P.emer.has(n.id) && !FP_SRC[n.type]) emN[b] = (emN[b] || 0) + 1; });
+  const cnt = {}, emN = {}, pnl = {}, dN = {}, dP = {};
+  S.nodes.forEach(n => { const b = bk(n); if (isSlot(n) || (OUT && P.off.has(n.id))) return; cnt[b] = (cnt[b] || 0) + 1; if (FP_BOX[n.type]) pnl[b] = (pnl[b] || 0) + 1; if (feed && P.emer.has(n.id) && !FP_SRC[n.type]) emN[b] = (emN[b] || 0) + 1;
+    if (OUT && !FP_SRC[n.type] && !P.alive.has(n.id) && !P.off.has(n.id)) { dN[b] = (dN[b] || 0) + 1; if (FP_BOX[n.type]) dP[b] = (dP[b] || 0) + 1; } });
+  // (내린 차단기 자체는 위에서 세지 않음)
+  const cutOf = b => OUT && cnt[b] && dN[b] >= cnt[b], partOf = b => OUT && dN[b] > 0 && dN[b] < cnt[b];
   const o = [`<svg xmlns="http://www.w3.org/2000/svg" id="mapSvg" viewBox="0 0 ${MAP_W} ${MAP_H}" font-family="Malgun Gothic,sans-serif">`,
     `<defs><linearGradient id="mpSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${black ? '#cfd5dc' : '#e6efe0'}"/><stop offset=".3" stop-color="${black ? '#c3cab9' : '#dfe9d2'}"/><stop offset="1" stop-color="${black ? '#b9c2b0' : '#d4e3c4'}"/></linearGradient></defs>`,
     `<rect width="${MAP_W}" height="${MAP_H}" fill="url(#mpSky)"/>`,
@@ -174,7 +179,7 @@ function mapSvg() {
   const items = [];
   MAP_BLD.forEach(b => {
     const bld = mapBldOf(b.id), n = cnt[bld] || 0;
-    const s = {black, em: emN[bld] > 0, lit: !black && n > 0, sel: MAP.selB === b.id};
+    const s = {black, em: emN[bld] > 0, lit: !black && n > 0 && !cutOf(bld), sel: !OUT && MAP.selB === b.id, cut: cutOf(bld), part: partOf(bld)};
     b.blocks.forEach(kb => items.push({y: kb.r[3], x: kb.r[0], svg: `<g class="mpB" data-mpb="${b.id}" style="cursor:pointer">${mapBlock(kb, s)}</g>`}));
   });
   MAP_TREES.forEach(([x, y, r]) => items.push({y, x, svg: mapTree(x, y, r, {black})}));
@@ -191,7 +196,7 @@ function mapSvg() {
   edges.forEach(e => {
     const A = end(e.a), B = end(e.b), dist = Math.hypot(B[0] - A[0], B[1] - A[1]);
     const cx = (A[0] + B[0]) / 2, cy = Math.min(A[1], B[1]) - 40 - dist * .22;
-    const c = fpLineCol(e.f[0].n), w = 4 + Math.min(5, e.f.length) * 1.6, on = !black;
+    const c = fpLineCol(e.f[0].n), w = 4 + Math.min(5, e.f.length) * 1.6, on = !black && !(OUT && e.f.every(f => !P.alive.has(f.n.id)));
     const d = `M${A[0]} ${A[1]} Q${cx} ${cy} ${B[0]} ${B[1]}`;
     o.push(`<g class="mpE" pointer-events="none" opacity="${on ? 1 : .3}"><path d="${d}" fill="none" stroke="#fff" stroke-width="${w + 5}" stroke-linecap="round" opacity=".85"/>`,
       `<path d="${d}" fill="none" stroke="${on ? c.c : '#9ca3af'}" stroke-width="${w}" stroke-linecap="round"/>`,
@@ -207,9 +212,10 @@ function mapSvg() {
   MAP_BLD.forEach(b => {
     const bld = mapBldOf(b.id), nm = mapName(b), n = cnt[bld] || 0, em = emN[bld] > 0;
     const [x, y] = mP((b.x0 + b.x1) / 2, b.y1, b.h);
-    const sub = b.small ? '' : em ? `⚡ 비상 전원 ${emN[bld]}곳` : black ? '정전' : n ? `분전반 ${pnl[bld] || 0} · 항목 ${n}` : '데이터 없음';
+    const sub = b.small ? '' : OUT ? (cutOf(bld) ? `⛔ 정전 · 분전반 ${dP[bld] || 0}` : partOf(bld) ? `⚠ 일부 정전 · 분전반 ${dP[bld] || 0}/${pnl[bld] || 0}개 정전` : n ? '정상' : '')
+      : em ? `⚡ 비상 전원 ${emN[bld]}곳` : black ? '정전' : n ? `분전반 ${pnl[bld] || 0} · 항목 ${n}` : '데이터 없음';
     const fs = b.small ? 11.5 : 14, w = Math.max(nm.length * fs + 26, sub.length * 7 + 16), hgt = sub ? 36 : 22;
-    LB[b.id] = {b, bld, nm, n, em, x, ly: y - (b.small ? 30 : 46), w, hgt, sub, fs};
+    LB[b.id] = {b, bld, nm, n, em, x, ly: y - (b.small ? 30 : 46), w, hgt, sub, fs, cut: cutOf(bld), part: partOf(bld)};
   });
   // 설비 자리: 끌어다 놓은 건 그 바닥 위에 기둥, 아니면 그 동 이름표 오른쪽에 배지로
   const SP = new Map(), slot = {};
@@ -229,10 +235,10 @@ function mapSvg() {
   // 선 꼬리표 → 건물 이름표 → 설비 (위로 갈수록 나중에)
   o.push(...tags);
   Object.values(LB).forEach(L => {
-    const {b, x, ly, w, hgt, sub, fs, em, n} = L, dot = em ? '#dc2626' : black ? '#9ca3af' : n ? '#22c55e' : '#cbd5e1';
-    o.push(`<g class="mpB" data-mpb="${b.id}" style="cursor:pointer"><rect x="${x - w / 2}" y="${ly}" width="${w}" height="${hgt}" rx="7" fill="${em ? '#fff1f2' : '#fff'}" stroke="${em ? '#dc2626' : MAP.selB === b.id ? '#262f7d' : '#cbd5e1'}" stroke-width="${MAP.selB === b.id || em ? 2 : 1}" opacity=".96"/>
+    const {b, x, ly, w, hgt, sub, fs, n} = L, em = L.em || L.cut, dot = em ? '#dc2626' : L.part ? '#f97316' : black ? '#9ca3af' : n ? '#22c55e' : '#cbd5e1';
+    o.push(`<g class="mpB" data-mpb="${b.id}" style="cursor:pointer"><rect x="${x - w / 2}" y="${ly}" width="${w}" height="${hgt}" rx="7" fill="${em ? '#fff1f2' : L.part ? '#fff7ed' : '#fff'}" stroke="${em ? '#dc2626' : L.part ? '#f97316' : !OUT && MAP.selB === b.id ? '#262f7d' : '#cbd5e1'}" stroke-width="${MAP.selB === b.id || em || L.part ? 2 : 1}" opacity=".96"/>
       <circle cx="${x - w / 2 + 11}" cy="${ly + 11}" r="4.5" fill="${dot}"/><text x="${x + 5}" y="${ly + 15}" text-anchor="middle" font-size="${fs}" font-weight="bold" fill="#0f172a">${esc(L.nm)}</text>
-      ${sub ? `<text x="${x}" y="${ly + 30}" text-anchor="middle" font-size="10.5" fill="${em ? '#b91c1c' : '#64748b'}">${esc(sub)}</text>` : ''}
+      ${sub ? `<text x="${x}" y="${ly + 30}" text-anchor="middle" font-size="10.5" font-weight="${OUT && (em || L.part) ? 'bold' : 'normal'}" fill="${em ? '#b91c1c' : L.part ? '#c2410c' : OUT && n ? '#15803d' : '#64748b'}">${esc(sub)}</text>` : ''}
       <line x1="${x}" y1="${ly + hgt}" x2="${x}" y2="${ly + hgt + 8}" stroke="#94a3b8"/></g>`);
   });
   srcs.forEach(n => {
@@ -253,6 +259,12 @@ function mapSvg() {
         : `<text x="${x}" y="${y + r + 11}" text-anchor="middle" font-size="10.5" font-weight="bold" fill="${tc}" paint-order="stroke" stroke="#fff" stroke-width="3.5">${n.kw ? esc(n.kw) + 'kW' : esc(state)}</text>`,
       '</g>');
   });
+  if (OUT) {
+    const off = [...P.off].map(byId).filter(Boolean).map(label).join(', ');
+    o.push(`<g><rect x="14" y="12" width="${Math.max(330, off.length * 9 + 120)}" height="62" rx="10" fill="#fff" stroke="#cbd5e1" opacity=".95"/>
+      <text x="28" y="36" font-size="15" font-weight="bold" fill="#0f172a">정전 범위 · ${esc(off)} 차단</text>
+      ${[['#dc2626', '정전'], ['#f97316', '일부 정전'], ['#22c55e', '정상']].map(([c, t], i) => `<rect x="${28 + i * 100}" y="48" width="14" height="14" rx="3" fill="${c}"/><text x="${48 + i * 100}" y="60" font-size="12.5" fill="#334155">${t}</text>`).join('')}</g>`);
+  }
   o.push('</svg>');
   return o.join('');
 }
