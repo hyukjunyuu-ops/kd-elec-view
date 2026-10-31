@@ -29,18 +29,23 @@ function pvBrk(x,y,P,bh,pw,k,amp){
 }
 
 /* 분전반 그림 */
+// 반 종류별 색 (외함 테두리·명판·배지) — 배전반·MCC반·UPS·분전반을 한눈에 구분
+const PV_KIND={MDB:{l:'배전반',c:'#1e3a8a'},MCC:{l:'MCC반',c:'#7c3aed'},UPS:{l:'UPS',c:'#15803d'},PNL:{l:'분전반',c:'#4b5563'}};
+function pvKindOf(h){if(h.type==='PNL'&&/UPS/i.test(h.name||''))return {l:'UPS 분전반',c:'#0f766e'};return PV_KIND[h.type]||{l:(TYPES[h.type]||{}).l||h.type,c:'#4b5563'};}
 function pvSvg(h){
   const Z=PV_SZ[S.cfg.pvSz]||PV_SZ.m,RH=Z.RH,bh=Z.bh,pw=Z.pw,fs=bh>=40?14:bh>=30?12:11;
   const C=kids(h.id),rows=Math.max(1,Math.ceil(C.length/2)),W=760,cx=380,y0=214,H=y0+rows*RH+60;
   const mp=Math.max(3,Math.min(4,parseInt(h.poles)||parseInt(POLES[h.wire])||(!effV(h)||pV(effV(h))===380?4:3))),hasN=mp>=4,pc=hasN?[0,1,2,3]:[0,1,2];
   const o=[`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Malgun Gothic,sans-serif">`,
    `<defs><linearGradient id="pvC" x1="0" x2="1"><stop offset="0" stop-color="#c7cdd4"/><stop offset=".5" stop-color="#eef1f4"/><stop offset="1" stop-color="#c7cdd4"/></linearGradient><linearGradient id="pvM" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f3f46"/><stop offset="1" stop-color="#111113"/></linearGradient></defs>`,
-   `<rect width="${W}" height="${H}" fill="#fff"/><rect x="12" y="12" width="${W-24}" height="${H-24}" rx="8" fill="url(#pvC)" stroke="#6b7280" stroke-width="2"/><rect x="30" y="30" width="${W-60}" height="${H-60}" rx="4" fill="#e7e9ec" stroke="#9ca3af"/>`,
+   `<rect width="${W}" height="${H}" fill="#fff"/><rect x="12" y="12" width="${W-24}" height="${H-24}" rx="8" fill="url(#pvC)" stroke="${pvKindOf(h).c}" stroke-width="5"/><rect x="30" y="30" width="${W-60}" height="${H-60}" rx="4" fill="#e7e9ec" stroke="#9ca3af"/>`,
    `<rect x="5" y="70" width="9" height="34" rx="2" fill="#9ca3af" stroke="#6b7280"/><rect x="5" y="${H-104}" width="9" height="34" rx="2" fill="#9ca3af" stroke="#6b7280"/>`];
   [[42,42],[W-42,42],[42,H-42],[W-42,H-42]].forEach(([x,y])=>o.push(`<circle cx="${x}" cy="${y}" r="4" fill="#d1d5db" stroke="#6b7280"/>`));
   /* 명판 */
   const sub=[h.rating?`MAIN ${pvAmp(h)} ${mp}P`:'',`회로 ${C.filter(n=>!isSlot(n)).length}`].filter(Boolean).join(' · ');
-  o.push(`<rect x="${cx-150}" y="42" width="300" height="46" rx="4" fill="#111827"/><text x="${cx}" y="67" text-anchor="middle" font-size="18" font-weight="bold" fill="#fff">${esc(pvFit(label(h),280,18))}</text><text x="${cx}" y="82" text-anchor="middle" font-size="11" fill="#d1d5db">${esc(sub)}</text>`);
+  const K=pvKindOf(h),kw=K.l.length*13+20;
+  o.push(`<rect x="${cx-kw/2}" y="20" width="${kw}" height="20" rx="10" fill="${K.c}"/><text x="${cx}" y="34" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">${esc(K.l)}</text>`);
+  o.push(`<rect x="${cx-150}" y="42" width="300" height="46" rx="4" fill="${K.c==='#4b5563'?'#111827':K.c}"/><text x="${cx}" y="67" text-anchor="middle" font-size="18" font-weight="bold" fill="#fff">${esc(pvFit(label(h),280,18))}</text><text x="${cx}" y="82" text-anchor="middle" font-size="11" fill="#d1d5db">${esc(sub)}</text>`);
   /* 범례 */
   [['M','배선용 (MCCB)'],['E','누전 (ELB)'],['U','형식 미입력']].forEach(([k,t],j)=>{const y=44+j*18;o.push(pvBrk(54,y,2,14,8,k,'').o,`<text x="94" y="${y+11}" font-size="11" fill="#374151">${t}</text>`);});
   o.push(`<text x="${W-48}" y="58" text-anchor="end" font-size="10.5" fill="#4b5563">몸통 숫자 = 정격</text><text x="${W-48}" y="74" text-anchor="end" font-size="10.5" fill="#4b5563">손잡이 수 = 극수</text>`);
@@ -89,7 +94,7 @@ function pvHtml(h){
   PV_HOST=h.id;const z=S.cfg.pvSz||'m';
   const sz=['s','m','l'].map((k,i)=>`<button data-pvsz="${k}"${k===z?' class="on"':''}>${['작게','보통','크게'][i]}</button>`).join('');
   const qa=wireList(h).map(k=>`<button data-pvadd="${k}">+ ${esc((WIRES[k]||{l:k}).l)}</button>`).join('');
-  return `<div class="ph" style="max-width:none"><div class="pvBar"><h2>${esc(label(h))}</h2><span class="muted">회로 ${kids(h.id).filter(n=>!isSlot(n)).length}개<span class="edOnly"> · 더블클릭: 이름 입력 (Enter·Tab 다음 / Esc 취소)</span></span><span class="sp"></span><span class="seg">${sz}</span><button data-pvmode="list">📋 목록</button><button data-pvpng="1">🖼 PNG</button></div>
+  return `<div class="ph" style="max-width:none"><div class="pvBar"><span class="pvKind" style="background:${pvKindOf(h).c}">${esc(pvKindOf(h).l)}</span><h2>${esc(label(h))}</h2><span class="muted">회로 ${kids(h.id).filter(n=>!isSlot(n)).length}개<span class="edOnly"> · 더블클릭: 이름 입력 (Enter·Tab 다음 / Esc 취소)</span></span><span class="sp"></span><span class="seg">${sz}</span><button data-pvmode="list">📋 목록</button><button data-pvpng="1">🖼 PNG</button></div>
   ${typeof pvSum==="function"?pvSum(h):""}<div class="pvAdd">${qa}<button data-pvadd="">+ 미지정</button><button data-pvslot="1" title="차단기가 없는 자리 (현장 순서 맞추기)">+ 빈 자리</button></div><div id="pvW">${pvSvg(h)}</div></div>`;
 }
 

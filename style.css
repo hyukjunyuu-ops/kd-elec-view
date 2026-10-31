@@ -87,3 +87,5 @@ table.tb tr.c{cursor:pointer}table.tb tr.c:hover td{background:#f8f9fc}table.tb 
 #pvW svg{width:100%;height:auto;display:block;user-select:none}
 #pvW .pvr:hover [data-card]{stroke:#262f7d;stroke-width:1.5}
 .pvEd{position:absolute;box-sizing:border-box;border:2px solid #262f7d;border-radius:4px;padding:0 6px;font-family:inherit;outline:none;background:#fffbe6;z-index:5}
+
+.pvKind{color:#fff;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;margin-right:6px;align-self:center}
