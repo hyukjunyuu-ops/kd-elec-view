@@ -177,7 +177,7 @@ function mapSvg(opt) {
     if (OUT && !FP_SRC[n.type] && !P.alive.has(n.id) && !P.off.has(n.id)) { dN[b] = (dN[b] || 0) + 1; if (FP_BOX[n.type]) dP[b] = (dP[b] || 0) + 1; } });
   // (내린 차단기 자체는 위에서 세지 않음)
   const cutOf = b => OUT && cnt[b] && dN[b] >= cnt[b], partOf = b => OUT && dN[b] > 0 && dN[b] < cnt[b];
-  const o = [`<svg xmlns="http://www.w3.org/2000/svg" id="mapSvg" viewBox="0 0 ${MAP_W} ${MAP_H}" font-family="Malgun Gothic,sans-serif">`,
+  const o = [`<svg xmlns="http://www.w3.org/2000/svg" id="mapSvg" viewBox="0 0 ${MAP_W} ${MAP_H}" font-family="Malgun Gothic,sans-serif">`, typeof BV_DEFS === 'string' ? BV_DEFS : '',
     `<defs><linearGradient id="mpSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${black ? '#cfd5dc' : '#e6efe0'}"/><stop offset=".3" stop-color="${black ? '#c3cab9' : '#dfe9d2'}"/><stop offset="1" stop-color="${black ? '#b9c2b0' : '#d4e3c4'}"/></linearGradient></defs>`,
     `<rect width="${MAP_W}" height="${MAP_H}" fill="url(#mpSky)"/>`,
     // 바닥: 숲 · 잔디 · 주차장 · 도로
@@ -210,11 +210,14 @@ function mapSvg(opt) {
   const top = b => { const t = mP(b.c[0], b.c[1], b.h); return [t[0], t[1] - 6]; };
   const end = id => id === '@kepco' ? [kx, ky - 84] : top(mapByBld(id));
   const tags = [];
+  // 건물을 골랐으면: 들어오는 회선을 한 가닥씩 (보내는 쪽 차단기·반 그림 → 받는 쪽 TR·반 그림)
+  const DT = FOC && !OUT ? mapDetail(mapBldOf(MAP.selB), FOC) : null;
   // 같은 두 동 사이에 전압이 여러 개면 곡선 높이를 조금씩 달리
   const nth = {};
   edges.forEach(e => {
     const foc = FOC && FOC.pairs.has(e.a + '>' + e.b);
     if (!OUT && !foc && !MAP.lay[e.cls]) return;          // 꺼 둔 레이어
+    if (DT && DT.pairs.has(e.a + '>' + e.b)) return;       // 한 가닥씩 따로 그림
     const A = end(e.a), B = end(e.b), dist = Math.hypot(B[0] - A[0], B[1] - A[1]), j = nth[e.a + e.b] = (nth[e.a + e.b] || 0) + 1;
     const cx = (A[0] + B[0]) / 2, cy = Math.min(A[1], B[1]) - 40 - dist * .22 - (j - 1) * 26;
     const c = fpLineCol(e.f[0].n), w = 4 + Math.min(5, new Set(e.f.map(f => f.p && f.p.id)).size) * 1.6, on = !black && !(OUT && e.f.every(f => !P.alive.has(f.n.id)));
@@ -256,6 +259,7 @@ function mapSvg(opt) {
     o.push(`<path pointer-events="none" d="${d}" fill="none" stroke="${run ? '#dc2626' : '#fca5a5'}" stroke-width="${run ? 6 : 2.5}" stroke-dasharray="${run ? '14 9' : '6 6'}" stroke-linecap="round">${run ? '<animate attributeName="stroke-dashoffset" from="46" to="0" dur="1s" repeatCount="indefinite"/>' : ''}</path>`);
   });
   // 선 꼬리표 → 건물 이름표 → 설비 (위로 갈수록 나중에)
+  if (DT) o.push(mapDetailSvg(DT, top, black));
   o.push(...tags);
   Object.values(LB).forEach(L => {
     const {b, x, ly, w, hgt, sub, fs, n} = L, em = L.em || L.cut, dot = em ? '#dc2626' : L.part ? '#f97316' : black ? '#9ca3af' : n ? '#22c55e' : '#cbd5e1';
@@ -290,6 +294,58 @@ function mapSvg(opt) {
   }
   o.push('</svg>');
   return o.join('');
+}
+
+/* ---------- 건물을 골랐을 때: 회선 한 가닥씩 ---------- */
+// 보내는 쪽 = 경로에서 다른 동의 마지막 항목 (VCB · ACB · 배전반 피더 · MCC …) · 받는 쪽 = 이 동 첫 항목 (TR · 배전반 …)
+function mapDetail(bld, FOC) {
+  const rows = FOC.paths.map(p => { const fd = p.chain.filter(n => bk(n) !== bld).pop(); return fd && mapByBld(bk(fd)) ? {fd, ent: p.n, a: bk(fd)} : null; }).filter(Boolean);
+  if (!rows.length) return null;
+  rows.sort((x, y) => label(x.fd).localeCompare(label(y.fd), 'ko', {numeric: true}));
+  return {bld, rows, pairs: new Set(rows.map(r => r.a + '>' + bld))};
+}
+// 차단기·반 그림: VCB → 고압반 · ACB → 배전반(ACB) · 그 밖 차단기 → 들어 있는 반 그림 · 반·TR → 그 그림
+function mapDevPic(n) {
+  if (typeof bvPic !== 'function') return '';
+  if (n.type === 'CB') { if (n.cbk === 'VCB') return bvPicVCB(); if (n.cbk === 'ACB') return bvPicMDB(1); const h = bvPanelOf(n); return h ? bvPic(h, 0, 0) : bvPicMDB(0); }
+  return BV_PT[n.type] ? bvPic(n, 0, 0) : bvPicMDB(0);
+}
+function mapDetailSvg(DT, top, black) {
+  const o = [], SC = 1, IW = 40 * SC, IH = 54 * SC, GAP = 76, TG = [];
+  // 동마다 그림을 지붕 위에 한 줄로
+  const place = (bld, list) => { const b = mapByBld(bld); if (!b) return {}; const T = top(b), M = {}, u = [...new Map(list.map(n => [n.id, n])).values()];
+    u.forEach((n, i) => { M[n.id] = {x: T[0] + (i - (u.length - 1) / 2) * GAP, y: T[1] - 26}; }); return M; };
+  const byA = {}; DT.rows.forEach(r => (byA[r.a] = byA[r.a] || []).push(r));
+  const PS = {}; Object.entries(byA).forEach(([a, rs]) => Object.assign(PS, place(a, rs.map(r => r.fd))));
+  const PE = place(DT.bld, DT.rows.map(r => r.ent));
+  const dev = (n, q, sub, col) => `<g class="mpDv" data-mpgo="${esc(n.id)}" style="cursor:pointer"><title>${esc(bk(n))} ${esc(label(n))}\n누르면 계통 트리에서 보기</title>
+      <rect x="${q.x - IW / 2 - 4}" y="${q.y - IH - 4}" width="${IW + 8}" height="${IH + 8}" rx="5" fill="#fff" stroke="${col}" stroke-width="2"/>
+      <g transform="translate(${q.x - IW / 2},${q.y - IH}) scale(${SC})">${mapDevPic(n)}</g>
+      <text x="${q.x}" y="${q.y + 15}" text-anchor="middle" font-size="11" font-weight="bold" fill="#0f172a" paint-order="stroke" stroke="#fff" stroke-width="3.5">${esc(sdFit(label(n), GAP + 10, 11))}</text>
+      ${sub ? `<text x="${q.x}" y="${q.y + 27}" text-anchor="middle" font-size="9.5" fill="${col}" font-weight="bold" paint-order="stroke" stroke="#fff" stroke-width="3">${esc(sub)}</text>` : ''}</g>`;
+  // 선 먼저 (그림 아래로)
+  DT.rows.forEach((r, i) => {
+    const A = PS[r.fd.id], B = PE[r.ent.id]; if (!A || !B) return;
+    const v = outV(r.fd) || inV(r.ent) || effV(r.fd), c = black ? '#9ca3af' : pV(v) >= 1000 ? '#ea580c' : '#2563eb';
+    const ay = A.y - IH - 4, by = B.y - IH - 4, dist = Math.hypot(B.x - A.x, by - ay), cy = Math.min(ay, by) - 45 - dist * .24;   // 먼 쌍일수록 높게 → 선끼리 안 겹치고 겹겹이
+    const d = `M${A.x} ${ay} Q${(A.x + B.x) / 2} ${cy} ${B.x} ${by}`;
+    o.push(`<g pointer-events="none"><path d="${d}" fill="none" stroke="#fff" stroke-width="7" opacity=".9"/><path d="${d}" fill="none" stroke="${c}" stroke-width="3.2"/>`,
+      black ? '' : `<path d="${d}" fill="none" stroke="#fff" stroke-width="1.6" stroke-dasharray="3 16"><animate attributeName="stroke-dashoffset" from="38" to="0" dur="1.2s" repeatCount="indefinite"/></path>`,
+      `<circle cx="${B.x}" cy="${by}" r="4" fill="${c}" stroke="#fff" stroke-width="1.5"/></g>`);
+    if (i === 0 || r.a !== DT.rows[i - 1].a) {   // 동마다 꼬리표 하나: 전압 · 회선 수
+      const k = DT.rows.filter(x => x.a === r.a).length, tx = `${v} · ${k}회선`, mx = (A.x + B.x) / 2, my = (ay + 2 * cy + by) / 4;
+      TG.push(`<g pointer-events="none"><rect x="${mx - tx.length * 3.9 - 8}" y="${my - 11}" width="${tx.length * 7.8 + 16}" height="21" rx="10.5" fill="#fff" stroke="${c}" stroke-width="1.5"/><text x="${mx}" y="${my + 4}" text-anchor="middle" font-size="11.5" font-weight="bold" fill="${c}">${esc(tx)}</text></g>`);
+    }
+  });
+  o.push(...TG);   // 꼬리표는 선 위에
+  const seen = new Set();
+  DT.rows.forEach(r => {
+    const v = outV(r.fd) || inV(r.ent) || '', c = pV(v) >= 1000 ? '#ea580c' : '#2563eb';
+    if (!seen.has(r.fd.id) && PS[r.fd.id]) { seen.add(r.fd.id); o.push(dev(r.fd, PS[r.fd.id], r.fd.cbk || (TYPES[r.fd.type] || {}).l || '', c)); }
+    if (!seen.has(r.ent.id) && PE[r.ent.id]) { seen.add(r.ent.id); const e = r.ent;
+      o.push(dev(e, PE[e.id], e.type === 'TR' ? [e.v2, e.kva ? e.kva + 'kVA' : ''].filter(Boolean).join(' · ') : effV(e) || '', e.type === 'TR' && typeof BV_VC === 'function' ? BV_VC(e.v2) : c)); }
+  });
+  return `<g class="mpDt">${o.join('')}</g>`;
 }
 
 /* ---------- 건물 정보 카드 ---------- */

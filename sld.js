@@ -7,7 +7,7 @@
    ========================================================= */
 
 const SD_STOP = {MDB: 1, PNL: 1, MCC: 1, UPS: 1};   // 여기서 멈추고 상자로
-const SD_COL = 84, SD_ROW = 108, SD_TOP = 74;
+const SD_COL = 84, SD_ROW = 108, SD_TOP = 74, SD_PH = 20;   // SD_PH = 반 그림 높이의 절반 (40×54 그림을 .75배)
 const SD = {z: 0, out: false, sx: 0, sy: 0, lc: {id: '', t: 0}, _last: ''};
 try { const o = JSON.parse(localStorage.getItem('ckd_elec2_sld2') || '{}'); SD.z = o.z || 0; } catch (e) {}
 const sdKeep = () => { try { localStorage.setItem('ckd_elec2_sld2', JSON.stringify({z: SD.z})); } catch (e) {} };
@@ -66,10 +66,10 @@ function sdSym(n, x, y, c, st) {
   if (n.type === 'LOAD') return `<circle cx="${x}" cy="${y}" r="12" fill="${f}" stroke="${k}" stroke-width="${sw}"/><text x="${x}" y="${y + 4.5}" text-anchor="middle" font-size="12" font-weight="bold" fill="${k}">M</text>`;
   if (n.type === 'CAP') return `<line x1="${x - 11}" y1="${y - 3}" x2="${x + 11}" y2="${y - 3}" stroke="${k}" stroke-width="3"/><line x1="${x - 11}" y1="${y + 4}" x2="${x + 11}" y2="${y + 4}" stroke="${k}" stroke-width="3"/><line x1="${x}" y1="${y - 14}" x2="${x}" y2="${y - 3}" stroke="${c}" stroke-width="2"/>`;
   if (n.type === 'ATS') return `<rect x="${x - 16}" y="${y - 10}" width="32" height="20" rx="3" fill="${st.dead ? f : '#fff1f2'}" stroke="${st.dead ? k : '#9f1239'}" stroke-width="${sw}"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-size="10" font-weight="bold" fill="${st.dead ? k : '#9f1239'}">ATS</text>`;
-  if (SD_STOP[n.type]) {
+  if (SD_STOP[n.type]) {   // 배전반·MCC반·분전반·UPS: 실제 모습 그림 (건물 안 보기와 같은 그림)
+    if (typeof bvPic === 'function') return `<g${st.dead ? ' opacity=".4" filter="url(#sdGray)"' : ''}>${bvPic(n, 0, 0).replace('translate(0,0)', `translate(${x - 15},${y - SD_PH}) scale(.75)`)}</g>`;
     const T = TYPES[n.type] || {c: '#334155'}, w = SD_COL - 20;
-    return `<rect x="${x - w / 2}" y="${y - 14}" width="${w}" height="28" rx="4" fill="${st.dead ? f : '#f8fafc'}" stroke="${st.dead ? '#94a3b8' : T.c}" stroke-width="2"/><rect x="${x - w / 2}" y="${y - 14}" width="${w}" height="6" rx="2" fill="${st.dead ? '#94a3b8' : T.c}"/>
-      <text x="${x}" y="${y + 8}" text-anchor="middle" font-size="10" font-weight="bold" fill="#0f172a">${esc(sdFit(n.name || n.no || '', w - 6, 10))}</text>`;
+    return `<rect x="${x - w / 2}" y="${y - 14}" width="${w}" height="28" rx="4" fill="${st.dead ? f : '#f8fafc'}" stroke="${st.dead ? '#94a3b8' : T.c}" stroke-width="2"/>`;
   }
   // 차단기: 접점(×) + 비스듬한 칼날, VCB·ACB는 인출형(⌃⌄), LBS는 접점에 ○
   const wd = n.cbk === 'VCB' || n.cbk === 'ACB', lbs = n.cbk === 'LBS', o = [];
@@ -91,7 +91,8 @@ function sdSrcSym(n, x, y, run, dead) {
 // 기호의 위·아래 끝까지 거리 (선이 여기까지 옴)
 function sdHalf(n) {
   if (n.type === 'TR') return 17;
-  if (SD_STOP[n.type] || n.type === 'CAP') return 14;
+  if (SD_STOP[n.type]) return SD_PH;
+  if (n.type === 'CAP') return 14;
   if (n.type === 'LOAD') return 12;
   if (n.type === 'ATS') return 10;
   return 7;   // 차단기: 접점까지
@@ -106,7 +107,7 @@ function sdSvg(L, forPng) {
   let vis = null;
   if (sn) { vis = pathOf(sn).reverse().find(x => L.V.has(x.id)); if (vis) pathOf(vis).forEach(x => path.add(x.id)); }
   o.push(`<svg xmlns="http://www.w3.org/2000/svg" id="sdSvg" viewBox="0 0 ${L.W} ${L.H}" width="${Math.round(L.W * z)}" height="${Math.round(L.H * z)}" font-family="Malgun Gothic,sans-serif">`,
-    `<rect class="sdBg" width="${L.W}" height="${L.H}" fill="#fff"/>`);
+    `<rect class="sdBg" width="${L.W}" height="${L.H}" fill="#fff"/>`, typeof BV_DEFS === 'string' ? BV_DEFS.replace('</defs>', '<filter id="sdGray"><feColorMatrix type="saturate" values="0"/></filter></defs>') : '');
   const col = n => dead(n.id) ? {c: '#cbd5e1', d: '', w: 2.2} : em(n.id) ? {c: '#dc2626', d: '9 6', w: 3.4} : fpLineCol(n);
   const seg = (x1, y1, x2, y2, c, hl, w) => `${hl && !forPng ? `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#fde047" stroke-width="${(w || c.w) + 7}" stroke-linecap="round"/>` : ''}<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c.c}" stroke-width="${w || c.w}"${c.d ? ` stroke-dasharray="${c.d}"` : ''} stroke-linecap="square">${c.c === '#dc2626' && c.d ? '<animate attributeName="stroke-dashoffset" from="30" to="0" dur="1s" repeatCount="indefinite"/>' : ''}</line>`;
 
@@ -138,7 +139,7 @@ function sdSvg(L, forPng) {
     });
   });
   // 같은 줄에서 오른쪽 이웃 기호까지 남은 폭 (이름이 넘어가지 않게)
-  const halfW = n => SD_STOP[n.type] ? (SD_COL - 20) / 2 : n.type === 'ATS' ? 16 : 12;
+  const halfW = n => SD_STOP[n.type] ? 22 : n.type === 'ATS' ? 16 : 12;
   const row = new Map();
   L.nodes.forEach(q => { const a = row.get(q.y) || []; a.push(q.x - halfW(q.n)); q.sp.forEach(s2 => a.push(s2.x - 16)); row.set(q.y, a); });
   const room = q => { const r = (row.get(q.y) || []).filter(x => x > q.x + 1); return (r.length ? Math.min(...r) : q.x + 200) - (q.x + 14) - 6; };
@@ -147,8 +148,8 @@ function sdSvg(L, forPng) {
     const n = q.n, d = dead(n.id), off = P.off.has(n.id), sel = n.id === UI.sel || (vis && vis.id === n.id && UI.sel !== n.id);
     const c = col(n), leaf = !q.kids.length;
     o.push(`<g class="sdN" data-sd="${esc(n.id)}" style="cursor:pointer"><title>${esc(pathOf(n).map(label).join(' › '))}${SD_STOP[n.type] ? '\n더블클릭: 결선도' : ''}</title>`);
-    if (sel && !forPng) o.push(`<circle cx="${q.x}" cy="${q.y}" r="${SD_STOP[n.type] ? 36 : 24}" fill="#fde047" opacity=".45"/>`);
-    o.push(`<rect x="${q.x - 18}" y="${q.y - 18}" width="36" height="36" fill="transparent"/>`, sdSym(n, q.x, q.y, c.c, {dead: d}));
+    if (sel && !forPng) o.push(SD_STOP[n.type] ? `<rect x="${q.x - 26}" y="${q.y - SD_PH - 6}" width="52" height="${SD_PH * 2 + 12}" rx="8" fill="#fde047" opacity=".55"/>` : `<circle cx="${q.x}" cy="${q.y}" r="24" fill="#fde047" opacity=".45"/>`);
+    o.push(SD_STOP[n.type] ? `<rect x="${q.x - 22}" y="${q.y - SD_PH}" width="44" height="${SD_PH * 2}" fill="transparent"/>` : `<rect x="${q.x - 18}" y="${q.y - 18}" width="36" height="36" fill="transparent"/>`, sdSym(n, q.x, q.y, c.c, {dead: d}));
     if (off) o.push(`<text x="${q.x - 14}" y="${q.y + 4}" text-anchor="end" font-size="10" font-weight="bold" fill="#dc2626">OFF</text>`);
     const nm = label(n), sp = n.type === 'CB' ? (SD_CBK[n.cbk] ? spec(n) : [n.cbk, spec(n)].filter(Boolean).join(' ')) : n.type === 'TR' ? [n.kva ? n.kva + 'kVA' : '', `${effV(n) || '?'}/${n.v2 || '?'}`].filter(Boolean).join(' ') : spec(n) || (n.cbk || '');
     if (leaf && !SD_STOP[n.type]) {   // 아래 끝: 이름을 기호 밑에
@@ -157,9 +158,11 @@ function sdSvg(L, forPng) {
       o.push(`<text x="${q.x}" y="${ly}" text-anchor="middle" font-size="10.5" font-weight="bold" fill="${d ? '#94a3b8' : '#0f172a'}">${esc(l1)}</text>`,
         l2 ? `<text x="${q.x}" y="${ly + 13}" text-anchor="middle" font-size="10.5" font-weight="bold" fill="${d ? '#94a3b8' : '#0f172a'}">${esc(l2)}</text>` : '',
         sp ? `<text x="${q.x}" y="${ly + (l2 ? 26 : 13)}" text-anchor="middle" font-size="9.5" fill="#64748b">${esc(sdFit(sp, SD_COL - 4, 9.5))}</text>` : '');
-    } else if (SD_STOP[n.type]) {
-      const C = kids(n.id).filter(k => !isSlot(k));
-      if (C.length) o.push(`<text x="${q.x}" y="${q.y + 27}" text-anchor="middle" font-size="9.5" fill="#64748b">회로 ${C.length}</text>`);
+    } else if (SD_STOP[n.type]) {   // 그림 밑에 이름 (두 줄까지) · 종류 · 회로 수
+      const C = kids(n.id).filter(k => !isSlot(k)), [l1, l2] = sdWrap(n.name || nm, SD_COL - 4, 10.5), ly = q.y + SD_PH + 13, K = typeof pvKindOf === 'function' ? pvKindOf(n) : {l: '', c: '#64748b'};
+      o.push(`<text x="${q.x}" y="${ly}" text-anchor="middle" font-size="10.5" font-weight="bold" fill="${d ? '#94a3b8' : '#0f172a'}">${esc(l1)}</text>`,
+        l2 ? `<text x="${q.x}" y="${ly + 13}" text-anchor="middle" font-size="10.5" font-weight="bold" fill="${d ? '#94a3b8' : '#0f172a'}">${esc(l2)}</text>` : '',
+        `<text x="${q.x}" y="${ly + (l2 ? 26 : 13)}" text-anchor="middle" font-size="9.5" fill="#64748b"><tspan fill="${d ? '#94a3b8' : K.c}" font-weight="bold">${esc(K.l)}</tspan>${C.length ? ' · 회로 ' + C.length : ''}</text>`);
     } else {                          // 중간: 이름을 오른쪽에
       // 오른쪽 이웃 칸까지 남은 폭만큼
       const wl = Math.max(30, Math.min(150, room(q)));
@@ -196,7 +199,7 @@ function sdView() {
       <button data-sda="out" class="${SD.out ? 'dn' : ''}">⏻ 차단기 내리기${SD.out ? ' 켜짐' : ''}</button>${P.off.size ? `<button data-sda="clr">모두 복구 (${P.off.size})</button>` : ''}<button data-rp="1" class="${P.off.size ? 'pri' : ''}">📄 계획정전 보고서</button>
       <span class="sdG"></span><button data-sda="zo">－</button><button data-sda="z1">${Math.round((SD.z || 1) * 100)}%</button><button data-sda="zi">＋</button><button data-sda="fit">⤢ 맞춤</button><button data-sda="png">🖼 PNG</button></div>
     <details class="sdLgW"${document.body.classList.contains('mob') ? '' : ' open'}><summary>범례</summary><div class="sdLg">${Object.keys(SD_CBK).map(k => `<span><b style="background:${SD_CBK[k].c}">${k}</b>${SD_CBK[k].l}</span>`).join('')}
-      <span><i class="tr"></i>변압기</span><span><i class="m">M</i>고압 모터</span><span><i class="bx"></i>배전반 (더블클릭 = 결선도)</span>
+      <span><i class="tr"></i>변압기</span><span><i class="m">M</i>고압 모터</span>${typeof bvPicMDB === 'function' ? `<span><svg viewBox="0 0 40 54" width="13" height="18" style="vertical-align:middle">${bvPicMDB(1)}</svg> 배전반 <svg viewBox="0 0 40 54" width="13" height="18" style="vertical-align:middle">${bvPicMCC()}</svg> MCC반 <svg viewBox="0 0 40 54" width="13" height="18" style="vertical-align:middle">${bvPicPNL()}</svg> 분전반 (더블클릭 = 회로도)</span>` : '<span><i class="bx"></i>배전반 (더블클릭 = 결선도)</span>'}
       <span><i class="ln" style="background:#eab308"></i>22.9kV</span><span><i class="ln" style="background:#ea580c"></i>3.3kV</span><span><i class="ln" style="background:#2563eb"></i>저압</span></div></details>
     ${hint}${where}${out}<div id="sdW">${sdSvg(L)}</div>`;
 }
