@@ -18,13 +18,13 @@ function pvFit(s,w,fs){s=String(s);let x=0;for(let i=0;i<s.length;i++){x+=(s.cha
 function pvBrk(x,y,P,bh,pw,k,amp){
   const afs=Math.max(8,Math.round(bh*.3)),ex=k==='E'?10:0;
   let w=pw*P+5+ex;if(amp)w=Math.max(w,Math.ceil(amp.length*afs*.62)+10+ex);
-  const B={M:'fill="url(#pvBm)" stroke="#8a8f87"',E:'fill="url(#pvBe)" stroke="#8a8f87"',U:'fill="#f1f5f9" fill-opacity=".55" stroke="#94a3b8" stroke-dasharray="3 2"'}[k];
-  const hc=k==='U'?'#cbd5e1':'#1f2937',tc=k==='U'?'#e2e8f0':'#6b7280',txt={M:'#1f2937',E:'#1f2937',U:'#64748b'}[k],hh=Math.round(bh*.45);
+  const B={M:'fill="url(#pvBm)" stroke="#4b5563"',E:'fill="url(#pvBe)" stroke="#15803d" stroke-width="1.3"',U:'fill="#f1f5f9" fill-opacity=".55" stroke="#94a3b8" stroke-dasharray="3 2"'}[k];
+  const hc=k==='U'?'#cbd5e1':'#1f2937',tc=k==='U'?'#e2e8f0':'#6b7280',txt={M:'#fff',E:'#1f2937',U:'#64748b'}[k],hh=Math.round(bh*.45);
   let o=`<rect x="${x}" y="${y}" width="${w}" height="${bh}" rx="2" ${B}/>`;
   const hx0=x+(w-ex-(pw*P-3))/2;
   for(let i=0;i<P;i++){const hx=hx0+i*pw;o+=k==='U'?`<rect x="${hx}" y="${y+3}" width="${pw-3}" height="${hh}" rx="1" fill="${hc}"/>`:`<rect x="${hx}" y="${y+3}" width="${pw-3}" height="${hh}" rx="1.5" fill="#d6d3d1" stroke="#a8a29e" stroke-width=".6"/><rect x="${hx+1.5}" y="${y+4}" width="${pw-6}" height="${Math.round(hh*.55)}" rx="1" fill="${hc}"/><rect x="${hx+2.5}" y="${y+4.5}" width="${pw-8}" height="1.6" fill="${tc}"/>`;}
   if(amp)o+=`<text x="${x+(w-ex)/2}" y="${y+bh-3}" text-anchor="middle" font-size="${afs}" font-weight="bold" fill="${txt}">${esc(amp)}</text>`;
-  if(k==='E')o+=`<circle cx="${x+w-7}" cy="${y+bh-7}" r="3.2" fill="#facc15" stroke="#a16207" stroke-width=".8"/><rect x="${x+w-10}" y="${y+3}" width="6" height="3" rx=".5" fill="#2563eb"/>`;
+  if(k==='E')o+=`<rect x="${x}" y="${y}" width="4" height="${bh}" rx="1.5" fill="#16a34a"/><circle cx="${x+w-7}" cy="${y+bh/2+1}" r="${Math.max(3.6,bh*.14)}" fill="#facc15" stroke="#a16207" stroke-width="1"/><text x="${x+w-7}" y="${y+7.5}" text-anchor="middle" font-size="6" font-weight="bold" fill="#15803d">T</text>`;   // 누전: 왼쪽 초록 띠 + 노란 테스트 버튼
   return {o,w};
 }
 
@@ -37,7 +37,7 @@ function pvSvg(h){
   const C=kids(h.id),rows=Math.max(1,Math.ceil(C.length/2)),W=760,cx=380,y0=214,H=y0+rows*RH+60;
   const mp=Math.max(3,Math.min(4,parseInt(h.poles)||parseInt(POLES[h.wire])||(!effV(h)||pV(effV(h))===380?4:3))),hasN=mp>=4,pc=hasN?[0,1,2,3]:[0,1,2];
   const o=[`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Malgun Gothic,sans-serif">`,
-   `<defs><linearGradient id="pvC" x1="0" x2="1"><stop offset="0" stop-color="#c7cdd4"/><stop offset=".5" stop-color="#eef1f4"/><stop offset="1" stop-color="#c7cdd4"/></linearGradient><linearGradient id="pvM" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#cfd2d6"/><stop offset=".5" stop-color="#eef0f2"/><stop offset="1" stop-color="#c4c8cc"/></linearGradient><linearGradient id="pvBm" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e7e5e4"/><stop offset=".5" stop-color="#fafaf9"/><stop offset="1" stop-color="#e2e0de"/></linearGradient><linearGradient id="pvBe" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f1f5f9"/><stop offset=".5" stop-color="#ffffff"/><stop offset="1" stop-color="#eef2f6"/></linearGradient><linearGradient id="pvAc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e0f2fe" stop-opacity=".18"/><stop offset=".45" stop-color="#ffffff" stop-opacity=".42"/><stop offset="1" stop-color="#e0f2fe" stop-opacity=".18"/></linearGradient></defs>`,
+   `<defs><linearGradient id="pvC" x1="0" x2="1"><stop offset="0" stop-color="#c7cdd4"/><stop offset=".5" stop-color="#eef1f4"/><stop offset="1" stop-color="#c7cdd4"/></linearGradient><linearGradient id="pvM" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#cfd2d6"/><stop offset=".5" stop-color="#eef0f2"/><stop offset="1" stop-color="#c4c8cc"/></linearGradient><linearGradient id="pvBm" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8b9199"/><stop offset=".5" stop-color="#b4b9c0"/><stop offset="1" stop-color="#868c94"/></linearGradient><linearGradient id="pvBe" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f1f5f9"/><stop offset=".5" stop-color="#ffffff"/><stop offset="1" stop-color="#eef2f6"/></linearGradient><linearGradient id="pvAc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e0f2fe" stop-opacity=".18"/><stop offset=".45" stop-color="#ffffff" stop-opacity=".42"/><stop offset="1" stop-color="#e0f2fe" stop-opacity=".18"/></linearGradient></defs>`,
    `<rect width="${W}" height="${H}" fill="#fff"/><rect x="12" y="12" width="${W-24}" height="${H-24}" rx="8" fill="url(#pvC)" stroke="${pvKindOf(h).c}" stroke-width="5"/><rect x="30" y="30" width="${W-60}" height="${H-60}" rx="4" fill="#e7e9ec" stroke="#9ca3af"/>`,
    `<rect x="5" y="70" width="9" height="34" rx="2" fill="#9ca3af" stroke="#6b7280"/><rect x="5" y="${H-104}" width="9" height="34" rx="2" fill="#9ca3af" stroke="#6b7280"/>`];
   [[42,42],[W-42,42],[42,H-42],[W-42,H-42]].forEach(([x,y])=>o.push(`<circle cx="${x}" cy="${y}" r="4" fill="#d1d5db" stroke="#6b7280"/>`));
@@ -47,7 +47,7 @@ function pvSvg(h){
   o.push(`<rect x="${cx-kw/2}" y="20" width="${kw}" height="20" rx="10" fill="${K.c}"/><text x="${cx}" y="34" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">${esc(K.l)}</text>`);
   o.push(`<rect x="${cx-150}" y="42" width="300" height="46" rx="4" fill="${K.c==='#4b5563'?'#111827':K.c}"/><text x="${cx}" y="67" text-anchor="middle" font-size="18" font-weight="bold" fill="#fff">${esc(pvFit(label(h),280,18))}</text><text x="${cx}" y="82" text-anchor="middle" font-size="11" fill="#d1d5db">${esc(sub)}</text>`);
   /* 범례 */
-  [['M','배선용 (MCCB)'],['E','누전 (ELB)'],['U','형식 미입력']].forEach(([k,t],j)=>{const y=44+j*18;o.push(pvBrk(54,y,2,14,8,k,'').o,`<text x="94" y="${y+11}" font-size="11" fill="#374151">${t}</text>`);});
+  [['M','배선용 MCCB (회색)'],['E','누전 ELB (초록)'],['U','형식 미입력']].forEach(([k,t],j)=>{const y=44+j*18;o.push(pvBrk(54,y,2,14,8,k,'').o,`<text x="94" y="${y+11}" font-size="11" fill="#374151">${t}</text>`);});
   o.push(`<text x="${W-48}" y="58" text-anchor="end" font-size="10.5" fill="#4b5563">몸통 숫자 = 정격</text><text x="${W-48}" y="74" text-anchor="end" font-size="10.5" fill="#4b5563">손잡이 수 = 극수</text>`);
   /* 메인 차단기 */
   const mw=26*mp+22,mx=cx-mw/2,my=100,mh=80;

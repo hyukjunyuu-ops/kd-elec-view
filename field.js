@@ -89,6 +89,7 @@ function fdSheet() {
     <datalist id="fdDL">${names.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
     ${names.length ? `<div class="sg">${names.slice(0, 8).map(x => `<button data-fdn="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}
     <div class="lb">정격 (A)</div><div class="fch">${FD_R.map(v => `<button data-fdr="${v}"${r === v ? ' class="on"' : ''}>${v}</button>`).join('')}<input id="fdR" value="${esc(FD_R.includes(r) ? '' : r)}" placeholder="기타" inputmode="decimal"></div>
+    <div class="lb">차단기 형식</div><div class="fch">${[['MCCB', '배선용 MCCB'], ['ELB', '누전 ELB'], ['', '모름']].map(([v, l]) => `<button data-fdk="${v}"${(n.cbk || '') === v ? ' class="on"' : ''}>${l}</button>`).join('')}</div>
     <div class="lb">극수</div><div class="fch">${FD_P.map(v => `<button data-fdpl="${v}"${p === v ? ' class="on"' : ''}>${v}P</button>`).join('')}</div>
     <div class="lb">중요 부하</div><div class="fch">${['', ...cats].map(v => `<button data-fdi="${esc(v)}"${(n.imp || '') === v ? ' class="on"' : ''}>${v ? esc(v) : '아님'}</button>`).join('')}</div>
     <div class="fch ftg"><button data-fdt="spare"${ckSpare(n) ? ' class="on"' : ''}>SPARE (예비)</button><button data-fdt="slot"${sl ? ' class="on"' : ''}>빈 자리 (차단기 없음)</button></div>
@@ -159,6 +160,7 @@ document.addEventListener('click', e => {
   if (n && (b = g('[data-fdn]'))) { document.getElementById('fdNm').value = b.dataset.fdn; return; }
   if (n && (b = g('[data-fdr]'))) { fdSave(); n.rating = b.dataset.fdr; const ri = document.getElementById('fdR'); if (ri) ri.value = ''; save(); return fdRender(true); }
   if (n && (b = g('[data-fdpl]'))) { fdSave(); n.poles = b.dataset.fdpl; save(); return fdRender(true); }
+  if (n && (b = g('[data-fdk]'))) { fdSave(); if (b.dataset.fdk) n.cbk = b.dataset.fdk; else delete n.cbk; save(); return fdRender(true); }
   if (n && (b = g('[data-fdi]'))) { fdSave(); if (b.dataset.fdi) n.imp = b.dataset.fdi; else delete n.imp; save(); return fdRender(true); }
   if (n && (b = g('[data-fdt]'))) { fdSave();
     if (b.dataset.fdt === 'spare') { if (ckSpare(n)) n.name = ''; else { n.name = 'SPARE'; delete n.slot; } }
