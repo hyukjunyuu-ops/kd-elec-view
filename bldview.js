@@ -377,7 +377,7 @@ function bvView() {
       ${UIX.edit && BV.mode === 'band' ? '<button data-bva="tidy">▦ 겹침 정리</button><button data-bva="reset">↺ 자동 배치</button><button data-bva="addf">+ 층 추가</button><button data-bva="delf">− 층 삭제</button>' : ''}
       <button data-bva="csv">📊 이 동 목록 엑셀</button></div>
     ${UIX.edit && BV.mode === 'band' ? '<div class="bvHint">✎ 편집: 박스를 끌어서 배치 · 다른 층 띠로 끌면 층이 바뀌어요 · 겹치면 옆 빈자리로 비켜요</div>' : ''}
-    <div class="bvSum">
+    ${BV.mode === 'band' ? `<div class="bvSum">
       ${R('수전', T.TR.length ? `TR ${T.TR.length}대 · <b>${T.kva.toLocaleString()}</b> kVA` : '—', L('tr', T.TR))}
       ${R('배전반', `<b>${T.mdb.length}</b>`, L('mdb', T.mdb))}${R('ACB', `<b>${T.acb.length}</b>`, L('acb', T.acb))}${R('MCC반', `<b>${T.mcc.length}</b>`, L('mcc', T.mcc))}
       ${R('분전반', `<b>${T.pnl.length}</b>`, L('pnl', T.pnl))}${R('UPS', `<b>${T.ups.length}</b>대`, L('ups', T.ups))}
@@ -386,8 +386,8 @@ function bvView() {
       ${R('중요 부하', Object.keys(T.imp).length ? Object.entries(T.imp).map(([k, v]) => `${esc(k)} <b>${v}</b>`).join(' · ') : '<b>0</b>', L('imp', T.N.filter(n => n.imp)))}
       ${T.gen.length ? R('비상 전원', T.gen.map(n => `${esc(label(n))}${n.kw ? ' ' + esc(n.kw) + 'kW' : ''}`).join(' · '), L('gen', T.gen)) : ''}
       ${T.PA.paths.length ? `<span class="bvS pa"><em>받는 곳</em>${pathTxt.replace(/<br>/g, ' · ')}</span>` : ''}
-    </div>
-    ${BV.mode === 'band' ? `${bvFocusBar(bld)}<div id="bvW">${bvSvg(bld, c)}</div>` : `<svg width="0" height="0" style="position:absolute">${BV_DEFS}</svg>${bvStatus(bld, c)}`}`;
+    </div>` : `<div class="bvSub">${esc(bvSrcTxt(bld))}</div>`}
+    ${BV.mode === 'band' ? `${bvFocusBar(bld)}<div id="bvW">${bvSvg(bld, c)}</div>` : `<svg width="0" height="0" style="position:absolute">${BV_DEFS}</svg>${bvStatus(bld, c, T, L)}`}`;
 }
 // 펼친 반 요약 줄 (없으면 안내 한 줄)
 function bvFocusBar(bld) {
@@ -454,46 +454,75 @@ function bvLeaves(P) { const o = []; const w = n => kids(n.id).forEach(k => { if
 const bvUpsOf = n => { let x = par(n), g = 0; while (x && g++ < 80) { if (x.type === 'UPS') return x; x = par(x); } return null; };
 const bvPanelOf = n => { let x = par(n), g = 0; while (x && g++ < 80) { if (BV_PT[x.type]) return x; x = par(x); } return null; };
 function bvLoadRow(n, c, cols) {
-  const p = bvPanelOf(n), bkp = effSrc(n) === 'E' ? '<span class="bk e">🔌 비상</span>' : bvUpsOf(n) ? '<span class="bk u">🔋 UPS</span>' : '<span class="bk x">⚠ 없음</span>';
-  const m = {cat: `<td>${n.imp ? `<span class="ic">${esc(n.imp)}</span>` : ''}</td>`, name: `<td><b>${esc(n.name || label(n))}</b></td>`, pnl: `<td>${p ? esc(label(p)) : ''}</td>`,
-    fl: `<td>${esc(bvFloorUp(n, c))}</td>`, sp: `<td>${esc(spec(n))}${n.kw ? ' · ' + esc(n.kw) + 'kW' : ''}</td>`, bk: `<td>${bkp}</td>`};
+  const p = bvPanelOf(n), bkp = effSrc(n) === 'E' ? '<span class="bk e">비상 발전기</span>' : bvUpsOf(n) ? '<span class="bk u">UPS</span>' : '<span class="bk x">백업 없음</span>';
+  const m = {cat: `<td>${n.imp ? `<span class="ic">${esc(n.imp)}</span>` : '<span class="mu">—</span>'}</td>`, name: `<td class="nm">${esc(n.name || label(n))}${n.no ? ` <small>#${esc(n.no)}</small>` : ''}</td>`, pnl: `<td>${p ? esc(label(p)) : ''}</td>`,
+    fl: `<td class="ce">${esc(bvFloorUp(n, c) || '—')}</td>`, sp: `<td class="mu2">${esc(spec(n))}${n.kw ? ' · ' + esc(n.kw) + 'kW' : ''}</td>`, bk: `<td>${bkp}</td>`};
   return `<tr class="c" data-bvld="${esc(n.id)}" title="${esc(pathOf(n).map(label).join(' › '))}\n누르면 부하도면">${cols.map(k => m[k]).join('')}</tr>`;
 }
+const bvUNm = u => label(u).replace(/\s*\(?\s*\d+(\.\d+)?\s*kva\s*\)?/i, '').trim() || label(u);   // 이름에서 (60KVA) 떼기 (용량은 배지로)
+const bvKva = n => n.kva ? n.kva + 'kVA' : (((n.name || '').match(/(\d+(\.\d+)?)\s*kVA/i) || [])[0] || '').replace(/kva/i, 'kVA');
+// 위 숫자 타일: TR · 배전반(ACB) · MCC반 · 분전반 · UPS · 중요 부하 (누르면 목록)
+function bvKpi(bld, T, L, U, imp, nb) {
+  const pic = t => `<svg viewBox="0 0 40 54" width="24" height="32">${t === 'TR' ? bvPicTR() : t === 'MDB' ? bvPicMDB(1) : t === 'MCC' ? bvPicMCC() : t === 'UPS' ? bvPicUPS() : bvPicPNL()}</svg>`;
+  const k = (key, list, p, num, lb, sub, cls) => `<a class="kp${cls ? ' ' + cls : ''}"${list.length ? ` data-bvl="${L(key, list)}"` : ''}>${p}<span class="kt"><b>${num}</b><em>${lb}</em>${sub ? `<small>${sub}</small>` : ''}</span></a>`;
+  return `<div class="bvKpi">
+    ${k('tr', T.TR, pic('TR'), T.TR.length, 'TR', T.kva ? T.kva.toLocaleString() + ' kVA' : '')}
+    ${k('mdb', T.mdb, pic('MDB'), T.mdb.length, '배전반', T.acb.length ? `ACB ${T.acb.length}` : '')}
+    ${k('mcc', T.mcc, pic('MCC'), T.mcc.length, 'MCC반', '')}
+    ${k('pnl', T.pnl, pic('PNL'), T.pnl.length, '분전반', `회로 ${T.cir.length}`)}
+    ${k('ups', U, pic('UPS'), U.length, 'UPS', (() => { const t = U.reduce((a, u) => a + (parseFloat(bvKva(u)) || 0), 0); return t ? '합계 ' + t.toLocaleString() + ' kVA' : ''; })(), 'u')}
+    ${k('imp', imp, '<span class="star">★</span>', imp.length, '중요 부하', nb ? `백업 없음 <span class="w">${nb}</span>` : imp.length ? '모두 백업' : '', 'i')}
+  </div>`;
+}
 function bvUpsH(bld, c) {
-  const U = S.nodes.filter(n => n.type === 'UPS' && !isSlot(n) && bk(n) === bld);
-  // 중요 부하에 'UPS'로 표시했는데 트리에서 UPS 아래가 아닌 것 → 따로 묶음
+  const U = S.nodes.filter(n => n.type === 'UPS' && !isSlot(n) && bk(n) === bld).sort((a, b) => bvLv(bvFloorUp(b, c)) - bvLv(bvFloorUp(a, c)) || label(a).localeCompare(label(b)));
   const loose = S.nodes.filter(n => n.imp === 'UPS' && bk(n) === bld && !bvUpsOf(n) && !kids(n.id).length);
-  if (!U.length && !loose.length) return `<div class="bvBox"><h3>🔋 UPS <small>0대</small></h3><div class="mu">이 동에 UPS가 아직 없어요.</div></div>`;
-  const kva = n => n.kva ? n.kva + 'kVA' : ((n.name || '').match(/(\d+(\.\d+)?)\s*kVA/i) || [])[0] || '';
-  const hd = '<thead><tr><th>부하</th><th>분전반</th><th>층</th><th>정격</th><th>중요</th></tr></thead>';
-  const one = u => {
-    const L = bvLeaves(u), inp = bvPanelOf(u), out = bvCh(u.id, bld), open = BV.u === u.id || L.length <= 12;
-    return `<div class="bvUps"><div class="uh" data-bvu="${esc(u.id)}">${bvMini(u, 24)}<b>${esc(label(u))}</b>${kva(u) ? `<span class="kv">${esc(kva(u))}</span>` : ''}
-        <span class="mu">${esc(bvFloorUp(u, c) || '층 미지정')}</span><span class="mu">받는 곳 ${inp ? esc(label(inp)) : '—'}</span><span class="mu">출력 → ${out.length ? out.map(x => esc(label(x))).join(', ') : '—'}</span>
-        <span class="sp"></span><span class="cnt">부하 <b>${L.length}</b></span><button data-bvgo2="${esc(u.id)}">📍 도면</button></div>
-      ${L.length ? `<table class="tb bvT">${hd}<tbody>${(open ? L : L.slice(0, 12)).map(n => bvLoadRow(n, c, ['name', 'pnl', 'fl', 'sp', 'cat'])).join('')}</tbody></table>${open ? '' : `<button class="more" data-bvu="${esc(u.id)}">▾ ${L.length - 12}개 더 보기</button>`}`
-        : '<div class="mu" style="padding:4px 8px">UPS 아래 회로가 아직 없어요 (출력 분전반 회로를 넣으면 여기 나와요)</div>'}</div>`;
-  };
-  return `<div class="bvBox"><h3>🔋 UPS <small>${U.length}대 · 부하 ${U.reduce((s, u) => s + bvLeaves(u).length, 0) + loose.length}</small></h3>${U.map(one).join('')}
-    ${loose.length ? `<div class="bvUps"><div class="uh"><b>UPS 부하 (어느 UPS인지 트리에 아직 연결 안 됨)</b><span class="sp"></span><span class="cnt">부하 <b>${loose.length}</b></span></div>
-      <table class="tb bvT">${hd}<tbody>${loose.map(n => bvLoadRow(n, c, ['name', 'pnl', 'fl', 'sp', 'cat'])).join('')}</tbody></table></div>` : ''}</div>`;
+  const tiles = U.map(u => ({id: u.id, u, L: bvLeaves(u)}));
+  if (loose.length) tiles.push({id: '@loose', L: loose});
+  if (!tiles.length) return `<section class="bvBox"><div class="bh"><h3>UPS</h3><span class="pill">0대</span></div><div class="emp">이 동에 UPS가 아직 없어요. 계통 트리에 UPS를 넣으면 여기 타일로 나와요.</div></section>`;
+  const cur = tiles.find(t => t.id === BV.u) || tiles[0];
+  const tile = t => { const u = t.u, im = t.L.filter(n => n.imp).length;
+    return `<button class="ut${t === cur ? ' on' : ''}${u ? '' : ' lo'}" data-bvu="${esc(t.id)}">
+      ${u ? `<svg viewBox="0 0 40 54" width="26" height="35">${bvPicUPS()}</svg>` : '<span class="q">?</span>'}
+      <span class="un"><b title="${u ? esc(label(u)) : ''}">${u ? esc(bvUNm(u)) : 'UPS 미연결 부하'}</b><span>${u ? `${bvKva(u) ? `<i class="kv">${esc(bvKva(u))}</i>` : ''}<i class="fl">${esc(bvFloorUp(u, c) || '층?')}</i>` : '<i class="fl">트리 연결 필요</i>'}</span></span>
+      <span class="uc"><b>${t.L.length}</b><small>부하${im ? ` · 중요 ${im}` : ''}</small></span></button>`; };
+  let det;
+  if (cur.u) {
+    const u = cur.u, inp = bvPanelOf(u), out = bvCh(u.id, bld);
+    det = `<div class="uf"><span class="nd">${inp ? `<em>입력</em>${esc(label(inp))}` : '<em>입력</em>—'}</span><span class="ar">→</span>
+        <span class="nd u"><em>UPS</em>${esc(bvUNm(u))}${bvKva(u) ? ' · ' + esc(bvKva(u)) : ''}</span><span class="ar">→</span>
+        <span class="nd">${out.length ? `<em>출력</em>${out.map(x => esc(label(x))).join(' · ')}` : '<em>출력</em>—'}</span><span class="sp"></span><button data-bvgo2="${esc(u.id)}">📍 도면 위치</button></div>`;
+  } else det = `<div class="uf"><span class="nd x">중요 부하 분류를 'UPS'로 했지만 트리에서 UPS 아래에 연결되지 않은 부하예요. 트리에서 해당 UPS 출력 분전반 아래로 옮기면 그 UPS로 들어가요.</span></div>`;
+  const mp = new Set(cur.L.map(n => (bvPanelOf(n) || {}).id)).size > 1;   // 분전반이 여러 개일 때만 분전반 칸
+  det += cur.L.length ? `<div class="tw"><table class="tb bvT"><thead><tr><th>부하</th>${mp ? '<th>분전반</th>' : ''}<th class="ce">층</th><th>정격</th><th>중요 분류</th></tr></thead><tbody>${cur.L.map(n => bvLoadRow(n, c, mp ? ['name', 'pnl', 'fl', 'sp', 'cat'] : ['name', 'fl', 'sp', 'cat'])).join('')}</tbody></table></div>`
+    : '<div class="emp">이 UPS 아래 회로가 아직 없어요. 출력 분전반에 회로를 넣으면 여기 나와요.</div>';
+  return `<section class="bvBox"><div class="bh"><h3>UPS</h3><span class="pill g">${U.length}대</span><span class="mu">부하 ${tiles.reduce((s, t) => s + t.L.length, 0)}</span></div>
+    <div class="ug">${tiles.map(tile).join('')}</div><div class="ud">${det}</div></section>`;
 }
-function bvImpH(bld, c) {
-  // UPS 아래이거나 'UPS'로 분류한 부하는 위 UPS 목록에 → 여기선 빼기
-  const A = S.nodes.filter(n => n.imp && bk(n) === bld && !isSlot(n) && n.imp !== 'UPS' && !bvUpsOf(n));
+function bvImpH(bld, c, A) {
   const cats = {}; A.forEach(n => { cats[n.imp] = (cats[n.imp] || 0) + 1; });
-  const f = BV.ic && cats[BV.ic] ? BV.ic : '', L = A.filter(n => !f || n.imp === f).sort((a, b) => (IMP_CATS.indexOf(a.imp) - IMP_CATS.indexOf(b.imp)) || label(a).localeCompare(label(b)));
   const nb = A.filter(n => effSrc(n) !== 'E').length;
-  return `<div class="bvBox"><h3>⭐ 중요 부하 <small>${A.length}개${A.length ? ` · 백업 없음 <b class="w">${nb}</b>` : ''} (UPS 부하는 위 UPS 목록에)</small></h3>
-    ${A.length ? `<div class="chips"><button data-bvic=""${f ? '' : ' class="on"'}>전체 ${A.length}</button>${Object.keys(cats).sort((a, b) => IMP_CATS.indexOf(a) - IMP_CATS.indexOf(b)).map(k => `<button data-bvic="${esc(k)}"${f === k ? ' class="on"' : ''}>${esc(k)} ${cats[k]}</button>`).join('')}</div>
-      <table class="tb bvT"><thead><tr><th>분류</th><th>부하</th><th>분전반</th><th>층</th><th>정격</th><th>백업</th></tr></thead><tbody>${L.map(n => bvLoadRow(n, c, ['cat', 'name', 'pnl', 'fl', 'sp', 'bk'])).join('')}</tbody></table>`
-    : '<div class="mu">중요 부하로 체크한 회로가 아직 없어요. 회로 속성창이나 [📁 파일 → 엑셀 일괄 수정]에서 체크하면 여기 모여요.</div>'}</div>`;
+  const f = BV.ic && (cats[BV.ic] || BV.ic === '@nb') ? BV.ic : '';
+  const L = A.filter(n => !f || (f === '@nb' ? effSrc(n) !== 'E' : n.imp === f)).sort((a, b) => (IMP_CATS.indexOf(a.imp) - IMP_CATS.indexOf(b.imp)) || label(a).localeCompare(label(b)));
+  return `<section class="bvBox"><div class="bh"><h3>중요 부하</h3><span class="pill a">${A.length}</span><span class="mu">UPS 부하는 위 UPS에서</span></div>
+    ${A.length ? `<div class="seg2"><button data-bvic=""${f ? '' : ' class="on"'}>전체 <b>${A.length}</b></button>${Object.keys(cats).sort((a, b) => IMP_CATS.indexOf(a) - IMP_CATS.indexOf(b)).map(k => `<button data-bvic="${esc(k)}"${f === k ? ' class="on"' : ''}>${esc(k)} <b>${cats[k]}</b></button>`).join('')}${nb ? `<button data-bvic="@nb" class="w${f === '@nb' ? ' on' : ''}">백업 없음 <b>${nb}</b></button>` : ''}</div>
+      <div class="tw"><table class="tb bvT"><thead><tr><th>분류</th><th>부하</th><th>분전반</th><th class="ce">층</th><th>정격</th><th>백업</th></tr></thead><tbody>${L.map(n => bvLoadRow(n, c, ['cat', 'name', 'pnl', 'fl', 'sp', 'bk'])).join('')}</tbody></table></div>`
+    : '<div class="emp">중요 부하로 체크한 회로가 아직 없어요. 회로 속성창이나 [📁 파일 → 엑셀 일괄 수정]에서 체크하면 여기 모여요.</div>'}</section>`;
 }
-function bvStatus(bld, c) {
+// 제목 아래 한 줄: 어디서 몇 회선으로 받는지
+function bvSrcTxt(bld) {
+  const ent = bvPanels(bld).filter(n => { const p = bvBoxPar(n); return !p || bk(p) !== bld; }), g = {};
+  ent.forEach(n => { const s = bvSrcOf(n, bld), k = `${s ? bk(s) : '수전'} ${inV(n) || ''}`.trim(); (g[k] = g[k] || []).push(s ? label(s) : ''); });
+  return Object.entries(g).map(([k, a]) => `${k} ${a.length}회선 수전${a.filter(Boolean).length ? ' (' + a.filter(Boolean).join(' · ') + ')' : ''}`).join('  ·  ');
+}
+function bvStatus(bld, c, T, L) {
   bvIndex();
   const ent = bvPanels(bld).filter(n => { const p = bvBoxPar(n); return !p || bk(p) !== bld; });
-  return `<div class="bvD"><div class="bvCards">${bvUpsH(bld, c)}${bvImpH(bld, c)}</div>
-    <div class="bvSec"><div class="bvSecT">층별 반 수 <span class="mu">· 층을 누르면 목록</span></div>${bvSecSvg(bld, c, [], ent)}</div></div>`;
+  const U = S.nodes.filter(n => n.type === 'UPS' && !isSlot(n) && bk(n) === bld);
+  const imp = S.nodes.filter(n => n.imp && bk(n) === bld && !isSlot(n) && n.imp !== 'UPS' && !bvUpsOf(n));   // UPS 부하는 UPS 쪽으로
+  const nb = imp.filter(n => effSrc(n) !== 'E').length;
+  return `${bvKpi(bld, T, L, U, imp, nb)}<div class="bvD"><div class="bvCards">${bvUpsH(bld, c)}${bvImpH(bld, c, imp)}</div>
+    <section class="bvSec bvBox"><div class="bh"><h3>층별</h3><span class="mu">층을 누르면 목록</span></div>${bvSecSvg(bld, c, [], ent)}</section></div>`;
 }
 
 // 층을 누르면: 그 층 반 목록 (어느 배전반에서 오는지)
@@ -540,7 +569,7 @@ document.addEventListener('click', e => {
   const j = t.closest('[data-bvj]'); if (j && BV.f) { bvGo(j.dataset.bvj, BV.f); return; }
   const bld = mapBldOf(BV.b);
   // 현황 보기: UPS 펼치기 · 부하 줄 = 부하도면 · 목록 항목 = 도면 · 단면 층 = 그 층 목록
-  const ru = t.closest('[data-bvu]'); if (ru && !t.closest('button:not(.more)')) { BV.u = BV.u === ru.dataset.bvu ? '' : ru.dataset.bvu; renderView(); return; }
+  const ru = t.closest('[data-bvu]'); if (ru) { BV.u = ru.dataset.bvu; renderView(); return; }
   const rg = t.closest('[data-bvgo2]'); if (rg) { bvGo('plan', rg.dataset.bvgo2); return; }
   const rl = t.closest('[data-bvld]'); if (rl) { e.stopPropagation(); bvGo('load', rl.dataset.bvld); return; }   // #view의 tr.c 공통 처리로 안 넘어가게
   const ri = t.closest('[data-bvic]'); if (ri) { BV.ic = ri.dataset.bvic; renderView(); return; }
@@ -624,15 +653,40 @@ body:not(.ro) #bvW svg{touch-action:none}#bvW .bvN:hover rect:first-child{stroke
 #view .bvOp .its{display:flex;flex-wrap:wrap;gap:5px}
 #view .bvOp .its .bvI{width:auto;flex:0 0 auto;margin:0}#view .bvI{display:inline-flex;align-items:center;gap:5px;padding:3px 9px 3px 5px;border:1px solid #cbd5e1;background:#fff;border-radius:16px;font-size:12px;cursor:pointer}#view .bvI:hover{border-color:#262f7d;background:#eef2ff}
 #view .bvI small{color:#94a3b8}#view .bvI small.up{color:#7c3aed}#view .bvI.ld{color:#15803d;border-color:#86efac;background:#f0fdf4}#view .bvI.out{color:#0e7490;border-color:#67e8f9;background:#ecfeff}
-#view .bvBox{border:1.5px solid #cbd5e1;border-radius:10px;background:#fff;padding:8px 10px}#view .bvBox h3{margin:0 0 6px;font-size:15px;color:#262f7d}#view .bvBox h3 small{font-size:12px;color:#64748b;font-weight:400}#view .bvBox h3 b.w{color:#dc2626}
-#view .bvUps{border:1px solid #e2e8f0;border-radius:8px;margin-top:6px;overflow:hidden}
-#view .bvUps .uh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 8px;background:#f0fdf4;cursor:pointer;font-size:12.5px}#view .bvUps .uh b{color:#15803d;font-size:14px}#view .bvUps .uh .kv{background:#15803d;color:#fff;border-radius:9px;padding:0 7px;font-size:11.5px;font-weight:700}
-#view .bvUps .uh .sp{flex:1}#view .bvUps .uh .cnt b{color:#15803d;font-size:14px}#view .bvUps .uh button,#view .bvUps .more{padding:2px 8px;border:1px solid #d6dbe8;background:#fff;border-radius:6px;font-size:12px;cursor:pointer}#view .bvUps .more{margin:4px 8px;width:auto}
-#view .bvT{width:100%;font-size:12.5px;margin:0}#view .bvT td,#view .bvT th{padding:4px 8px}#view .bvT tr.c{cursor:pointer}#view .bvT tr.c:hover{background:#eef2ff}
-#view .bvT .ic{background:#fef3c7;color:#92400e;border-radius:9px;padding:0 7px;font-size:11.5px;white-space:nowrap}
-#view .bvT .bk{font-size:11.5px;font-weight:700;white-space:nowrap}#view .bvT .bk.e{color:#dc2626}#view .bvT .bk.u{color:#15803d}#view .bvT .bk.x{color:#b45309}
-#view .bvBox .chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}#view .bvBox .chips button{padding:3px 10px;border:1px solid #d6dbe8;background:#fff;border-radius:14px;font-size:12px;cursor:pointer}#view .bvBox .chips button.on{background:#262f7d;color:#fff;border-color:#262f7d}
-#view .bvSec{width:290px;flex:none;position:sticky;top:0;border:1.5px solid #cbd5e1;border-radius:10px;background:#fff;padding:8px}#view .bvSec svg{display:block;width:100%;height:auto}
+#view .bvSub{font-size:12.5px;color:#9a3412;margin:-2px 0 10px 2px}
+#view .bvKpi{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:10px;margin-bottom:12px}
+#view .kp{display:flex;flex-wrap:nowrap;flex-direction:row;align-items:center;gap:8px;min-width:0;padding:9px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 1px 2px rgba(15,23,42,.06);color:inherit;text-decoration:none}
+#view .kp[data-bvl]{cursor:pointer}#view .kp[data-bvl]:hover{border-color:#262f7d;box-shadow:0 2px 8px rgba(38,47,125,.15)}
+#view .kp .kt{display:flex;flex-direction:column;line-height:1.15;min-width:0}#view .kp .kt>b{font-size:22px;color:#0f172a}#view .kp .kt em{font-style:normal;font-size:12px;color:#64748b;font-weight:700}#view .kp svg{flex:none}#view .kp .kt small{font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#view .kp.u{background:#f0fdf4;border-color:#bbf7d0}#view .kp.u .kt>b{color:#15803d}#view .kp.i{background:#fffbeb;border-color:#fde68a}#view .kp.i .kt>b{color:#b45309}#view .kp.i small .w{color:#dc2626;font-weight:800}
+#view .kp .star{font-size:26px;color:#f59e0b;width:30px;text-align:center}
+#view .bvBox{background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 1px 2px rgba(15,23,42,.06);padding:12px 14px}
+#view .bvBox .bh{display:flex;align-items:center;gap:8px;margin-bottom:10px}#view .bvBox h3{margin:0;font-size:15px;color:#0f172a}
+#view .pill{background:#e2e8f0;color:#334155;border-radius:10px;padding:1px 9px;font-size:12px;font-weight:700}#view .pill.g{background:#dcfce7;color:#15803d}#view .pill.a{background:#fef3c7;color:#b45309}
+#view .emp{color:#94a3b8;font-size:12.5px;padding:14px;text-align:center;background:#f8fafc;border-radius:8px}
+#view .ug{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:8px}
+#view .ut{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #e2e8f0;background:#fff;border-radius:10px;cursor:pointer;text-align:left;width:auto;margin:0}
+#view .ut:hover{border-color:#86efac}#view .ut.on{border-color:#15803d;background:#f0fdf4;box-shadow:inset 0 0 0 1px #15803d}#view .ut.lo{border-style:dashed}
+#view .ut .q{width:26px;height:35px;display:grid;place-items:center;border-radius:6px;background:#fef3c7;color:#b45309;font-weight:800}
+#view .ut .un{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}#view .ut .un b{font-size:13px;color:#0f172a;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#view .ut .un span{display:flex;gap:4px}#view .ut i{font-style:normal;font-size:11px;border-radius:8px;padding:0 6px}#view .ut i.kv{background:#15803d;color:#fff;font-weight:700}#view .ut i.fl{background:#eef2ff;color:#262f7d;font-weight:700}
+#view .ut .uc{display:flex;flex-direction:column;align-items:flex-end;line-height:1.1}#view .ut .uc b{font-size:18px;color:#15803d}#view .ut .uc small{font-size:10.5px;color:#94a3b8;white-space:nowrap}
+#view .ud{margin-top:10px;border-top:1px solid #f1f5f9;padding-top:10px}
+#view .uf{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;font-size:12.5px}
+#view .uf .nd{padding:4px 10px;border-radius:8px;background:#f1f5f9;color:#0f172a;font-weight:600}#view .uf .nd em{font-style:normal;font-size:10.5px;color:#64748b;margin-right:5px;font-weight:700}
+#view .uf .nd.u{background:#15803d;color:#fff}#view .uf .nd.u em{color:#bbf7d0}#view .uf .nd.x{background:#fffbeb;color:#92400e;font-weight:400}#view .uf .ar{color:#94a3b8;font-weight:800}#view .uf .sp{flex:1}
+#view .uf button{padding:3px 10px;border:1px solid #d6dbe8;background:#fff;border-radius:6px;font-size:12px;cursor:pointer}
+#view .tw{max-height:380px;overflow:auto;border:1px solid #f1f5f9;border-radius:8px}
+#view .bvT{width:100%;font-size:12.5px;margin:0;border-collapse:collapse}#view .bvT th{position:sticky;top:0;background:#f8fafc;color:#64748b;font-weight:700;font-size:11.5px;text-align:left;padding:6px 10px;border-bottom:1px solid #e2e8f0}
+#view .bvT td{padding:6px 10px;border-bottom:1px solid #f1f5f9}#view .bvT .ce{text-align:center}#view .bvT .nm{font-weight:600;color:#0f172a}#view .bvT .nm small{color:#94a3b8;font-weight:400}#view .bvT .mu2{color:#64748b}
+#view .bvT tr.c{cursor:pointer}#view .bvT tr.c:hover td{background:#f5f7ff}
+#view .bvT .ic{background:#fef3c7;color:#92400e;border-radius:9px;padding:1px 8px;font-size:11.5px;white-space:nowrap;font-weight:600}
+#view .bvT .bk{font-size:11.5px;font-weight:700;white-space:nowrap;border-radius:9px;padding:1px 8px}#view .bvT .bk.e{background:#fee2e2;color:#b91c1c}#view .bvT .bk.u{background:#dcfce7;color:#15803d}#view .bvT .bk.x{background:#fff7ed;color:#c2410c}
+#view .seg2{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}#view .seg2 button{padding:4px 11px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:16px;font-size:12px;cursor:pointer;color:#475569;width:auto;margin:0}
+#view .seg2 button b{color:#0f172a;margin-left:2px}#view .seg2 button.on{background:#262f7d;border-color:#262f7d;color:#fff}#view .seg2 button.on b{color:#fff}#view .seg2 button.w{color:#c2410c;border-color:#fed7aa;background:#fff7ed}#view .seg2 button.w.on{background:#c2410c;color:#fff}
+body.mob #view .bvKpi{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}body.mob #view .kp{padding:6px 8px;gap:6px}body.mob #view .kp svg{display:none}body.mob #view .kp .kt>b{font-size:20px}
+body.mob #view .ug{grid-template-columns:1fr 1fr}body.mob #view .ut svg{display:none}
+#view .bvSec{width:260px;flex:none;position:sticky;top:0}#view .bvSec svg{display:block;width:100%;height:auto}
 #view .bvSecT{font-size:12.5px;color:#475569;margin-bottom:4px}#view .bvSecT b{color:#b45309}
 #view .bvFl:hover rect:first-of-type{stroke:#262f7d;stroke-width:2}
 body.mob #view .bvCh{flex-wrap:wrap}#view .bvCh b,#view .bvCh span{white-space:nowrap}body.mob #view .bvS.pa,body.mob #view .bvR .ar{display:none}body.mob #view .bvD{flex-direction:column-reverse}body.mob #view .bvSec{width:auto;position:static}body.mob #view .bvR .t{width:auto;flex:1}body.mob #view .bvR{flex-wrap:wrap}body.mob #view .bvR .s{flex-basis:100%;padding-left:40px}body.mob #view .bvR.on+.bvOp{padding-left:12px}
