@@ -1,6 +1,6 @@
 /* =========================================================
    bldview.js — 건물 안 보기 (공장 지도에서 건물 더블클릭)
-   - 기본 = [▤ 배전반 카드]: 왼쪽 TR별 카드(배전반 줄 → 누르면 층별 분전반 목록) · 오른쪽 건물 단면(층별 반 수, 펼친 배전반이 가는 층 노랗게)
+   - 기본 = [▤ 현황]: 위 요약 줄(TR·배전반·MCC·분전반·UPS 수, 누르면 목록) · UPS 목록(→ 그 UPS 부하) · 중요 부하 목록(UPS 부하 제외, 분류 칩, 백업) · 오른쪽 건물 단면
    - [▦ 층 배치]: 한 화면에 층을 가로 띠로 (위가 높은 층), 반은 박스 (실제 모습 그림 · 이름 · 전압 · 회로/ACB 수)
      그림: 분전반(문 연 외함·차단기 줄) · MCC반(서랍 유닛) · 배전반(ACB) · 고압반(VCB) · 몰드 TR · UPS
    - 맨 위 '수전' 줄에서 들어오는 선 → TR → 배전반은 늘 선으로. 나머지 반은 흐리게
@@ -11,7 +11,7 @@
    - 오른쪽 현황표: 수전·받는 곳·배전반·ACB·MCC·분전반·UPS·비상부하·중요 부하·층별
    ========================================================= */
 
-const BV = {b: '', drag: null, rows: null, f: '', K: null, mode: 'card'};   // mode: card = 배전반 카드 + 건물 단면 · band = 층 배치
+const BV = {b: '', drag: null, rows: null, f: '', K: null, mode: 'card', u: '', ic: ''};   // mode: card = 현황(UPS·중요 부하·건물 단면) · band = 층 배치
 try { BV.mode = localStorage.getItem('ckd_elec2_bvmode') || 'card'; } catch (e) {}   // f = 눌러서 하위 계통을 펼친 반
 const BV_PT = {TR: 1, MDB: 1, MCC: 1, PNL: 1, UPS: 1};                // 박스로 그리는 종류
 
@@ -373,7 +373,7 @@ function bvView() {
   const vs = [...new Set(bvPanels(bld).map(n => effV(n) || '전압?'))].sort((a, b) => pV(b) - pV(a));
   return `<div class="bvBar"><button data-bva="back">◀ 공장 지도</button><h2>${esc(nm)}</h2>
       <span class="bvLg">${vs.map(v => `<i style="background:${BV_VC(v)}"></i>${esc(v)}`).join('')}<i class="d" style="background:#f59e0b"></i>중요 부하<i class="d" style="background:#dc2626"></i>비상</span><span class="sp"></span>
-      <span class="bvMd"><button data-bva="card"${BV.mode === 'band' ? '' : ' class="on"'}>▤ 배전반 카드</button><button data-bva="band"${BV.mode === 'band' ? ' class="on"' : ''}>▦ 층 배치</button></span>
+      <span class="bvMd"><button data-bva="card"${BV.mode === 'band' ? '' : ' class="on"'}>▤ 현황</button><button data-bva="band"${BV.mode === 'band' ? ' class="on"' : ''}>▦ 층 배치</button></span>
       ${UIX.edit && BV.mode === 'band' ? '<button data-bva="tidy">▦ 겹침 정리</button><button data-bva="reset">↺ 자동 배치</button><button data-bva="addf">+ 층 추가</button><button data-bva="delf">− 층 삭제</button>' : ''}
       <button data-bva="csv">📊 이 동 목록 엑셀</button></div>
     ${UIX.edit && BV.mode === 'band' ? '<div class="bvHint">✎ 편집: 박스를 끌어서 배치 · 다른 층 띠로 끌면 층이 바뀌어요 · 겹치면 옆 빈자리로 비켜요</div>' : ''}
@@ -387,7 +387,7 @@ function bvView() {
       ${T.gen.length ? R('비상 전원', T.gen.map(n => `${esc(label(n))}${n.kw ? ' ' + esc(n.kw) + 'kW' : ''}`).join(' · '), L('gen', T.gen)) : ''}
       ${T.PA.paths.length ? `<span class="bvS pa"><em>받는 곳</em>${pathTxt.replace(/<br>/g, ' · ')}</span>` : ''}
     </div>
-    ${BV.mode === 'band' ? `${bvFocusBar(bld)}<div id="bvW">${bvSvg(bld, c)}</div>` : `<svg width="0" height="0" style="position:absolute">${BV_DEFS}</svg>${bvCards(bld, c)}`}`;
+    ${BV.mode === 'band' ? `${bvFocusBar(bld)}<div id="bvW">${bvSvg(bld, c)}</div>` : `<svg width="0" height="0" style="position:absolute">${BV_DEFS}</svg>${bvStatus(bld, c)}`}`;
 }
 // 펼친 반 요약 줄 (없으면 안내 한 줄)
 function bvFocusBar(bld) {
@@ -415,36 +415,13 @@ function bvCsv() {
   S.nodes.filter(n => bk(n) === bld && !isSlot(n)).forEach(n => rows.push([bvFloorUp(n, c) || '층 미지정', tlabel(n), n.no || '', n.name || '', effV(n), spec(n), n.kw || '', SRC[effSrc(n)], n.imp || '', par(n) ? label(par(n)) : '', pathOf(n).slice(0, -1).map(label).join(' › ')]));
   download(new Blob(['﻿' + rows.map(r => r.map(csvQ).join(',')).join('\r\n')], {type: 'text/csv'}), `${bld}_설비목록_${stamp()}.csv`);
 }
-/* ---------- 카드 보기 (기본): 왼쪽 TR별 배전반 카드 · 오른쪽 건물 단면 ---------- */
+/* ---------- 공통 (현황 보기) ---------- */
 // 배전반 아래 모든 반 (이 동 안, 여러 단계)
 function bvDesc(P, bld) { const o = []; const w = n => bvCh(n.id, bld).forEach(k => { o.push(k); w(k); }); w(P); return o; }
 const bvSrcOf = (n, bld) => { let x = par(n), g = 0; while (x && g++ < 80) { if (bk(x) !== bld) return x; x = par(x); } return null; };
 const bvMini = (n, w) => `<svg class="pic" viewBox="0 0 40 54" width="${w}" height="${Math.round(w * 1.35)}">${bvPic(n, 0, 0)}</svg>`;
 const bvFlTxt = f => f || '층 미지정';
 const bvFlSort = (a, b) => (a === '' ? 1 : 0) - (b === '' ? 1 : 0) || bvLv(b) - bvLv(a);
-function bvRowH(n, bld, c) {
-  const D = bvDesc(n, bld), d = bvLoads(n, bld), K = bvKind(n), v = (n.type === 'TR' ? n.v2 : '') || effV(n) || '전압?', open = BV.f === n.id;
-  const can = D.length || d.L.length || d.out.length;
-  const cnt = {}; D.forEach(x => { const k = bvKind(x).l; cnt[k] = (cnt[k] || 0) + 1; });
-  const fc = {}; D.forEach(x => { const f = bvFloorOf(x, c); fc[f] = (fc[f] || 0) + 1; });
-  const sum = [...Object.entries(cnt).map(([k, m]) => `${esc(k)} <b>${m}</b>`), d.L.length ? `부하 <b>${d.L.length}</b>` : '', d.out.length ? `다른 동 <b>${d.out.length}</b>` : ''].filter(Boolean).join(' · ');
-  const fl = Object.keys(fc).sort(bvFlSort).map(f => `<i>${esc(bvFlTxt(f))} ${fc[f]}</i>`).join('');
-  return `<div class="bvR${open ? ' on' : ''}" data-bvx="${esc(n.id)}" title="${can ? (open ? '접기' : '누르면 층별 목록') : '누르면 배전반/분전반/MCC반 도면'}">
-      ${bvMini(n, 30)}<div class="t"><b>${esc(label(n))}</b><span><em style="color:${K.c}">${esc(K.l)}</em> · <em style="color:${BV_VC(v)}">${esc(v)}</em>${bvInfo(n) ? ' · ' + esc(bvInfo(n)) : ''}</span></div>
-      <div class="s">${sum || '<span class="mu">하위 없음</span>'}<div class="fl">${fl}</div></div><span class="ar">${can ? (open ? '▾' : '▸') : '›'}</span></div>
-    ${open ? bvOpenH(n, bld, c, D, d) : ''}`;
-}
-// 펼친 배전반: 층별로 하위 반 · 바로 나가는 부하
-function bvOpenH(F, bld, c, D, d) {
-  const by = {}; D.forEach(x => { const f = bvFloorOf(x, c); (by[f] = by[f] || []).push(x); });
-  const it = x => { const p = bvBoxPar(x), up = p && p.id !== F.id ? `<small class="up">← ${esc(label(p))}</small>` : '';
-    return `<button class="bvI" data-bvp="${esc(x.id)}" title="${esc(pathOf(x).map(label).join(' › '))}\n누르면 배전반/분전반/MCC반 도면">${bvMini(x, 15)}<b>${esc(label(x))}</b><small>${esc(bvInfo(x))}</small>${up}</button>`; };
-  const ch = [...d.out.map(x => `<button class="bvI out" data-bvc="${esc(x.id)}" title="누르면 ${esc(bk(x))} 안 보기">↗ ${esc(bk(x))} · ${esc(label(x))}</button>`),
-    ...d.L.slice(0, 40).map(x => `<button class="bvI ld" data-bvc="${esc(x.id)}" title="누르면 부하도면">◆ ${esc(label(x))}</button>`), d.L.length > 40 ? `<button class="bvI" data-bvc="@more">+${d.L.length - 40}개 더 · 회로도</button>` : ''].join('');
-  return `<div class="bvOp"><div class="act"><button data-bvj="plan">📍 도면 위치</button><button data-bvj="load">📄 부하도면</button><button data-bvj="dg">▦ 회로도</button>${d.sp ? `<span class="mu">SPARE ${d.sp}</span>` : ''}</div>
-    ${Object.keys(by).sort(bvFlSort).map(f => `<div class="fr"><em class="${f ? '' : 'un'}">${esc(bvFlTxt(f))}</em><div class="its">${by[f].sort((a, b) => label(a).localeCompare(label(b))).map(it).join('')}</div></div>`).join('')}
-    ${ch ? `<div class="fr"><em class="ld">부하</em><div class="its">${ch}</div></div>` : ''}</div>`;
-}
 // 건물 단면: 층마다 숫자 · 펼친 배전반이 가는 층은 노랗게 · 수전 화살표
 function bvSecSvg(bld, c, hot, ent) {
   const F = c.floors.slice().sort((a, b) => bvLv(b) - bvLv(a)), P = bvPanels(bld), un = P.filter(n => !bvFloorOf(n, c));
@@ -471,26 +448,54 @@ function bvSecSvg(bld, c, hot, ent) {
   o.push('</svg>');
   return o.join('');
 }
-function bvCards(bld, c) {
-  bvIndex();
-  const P = bvPanels(bld), ent = P.filter(n => { const p = bvBoxPar(n); return !p || bk(p) !== bld; });
-  const F = BV.f && byId(BV.f) && BV_PT[byId(BV.f).type] && bk(byId(BV.f)) === bld ? byId(BV.f) : null;
-  const hot = F ? bvDesc(F, bld) : [];
-  const src = n => { const s = bvSrcOf(n, bld); return s ? `← ${esc(bk(s) === '유틸리티동' ? '유틸' : bk(s))} ${esc(label(s))}${inV(n) ? ' · ' + esc(inV(n)) : ''}` : '← 수전'; };
-  const cards = ent.filter(n => n.type === 'TR').map(t => {
-    const rows = bvCh(t.id, bld), d = bvLoads(t, bld), fl = bvFloorOf(t, c);
-    return `<div class="bvCard"><div class="bvCh">${bvMini(t, 26)}<b>${esc(label(t))}</b><span>${esc(t.v2 || '')}${t.kva ? ' · ' + esc(t.kva) + 'kVA' : ''}</span><span class="src">${src(t)}</span><span class="sp"></span>${fl ? `<span class="flb">${esc(fl)}</span>` : ''}</div>
-      ${rows.map(n => bvRowH(n, bld, c)).join('')}
-      ${d.L.length + d.out.length ? `<div class="bvR x"><div class="t"><span class="mu">TR에서 바로: ${[...d.out.map(x => '↗ ' + esc(bk(x)) + ' ' + esc(label(x))), ...d.L.map(x => '◆ ' + esc(label(x)))].slice(0, 6).join(' · ')}</span></div></div>` : ''}
-      ${rows.length + d.L.length + d.out.length ? '' : '<div class="bvR x"><span class="mu">아래 배전반이 아직 없어요 (조사 중)</span></div>'}</div>`;
-  });
-  const oth = ent.filter(n => n.type !== 'TR');
-  if (oth.length) cards.push(`<div class="bvCard"><div class="bvCh"><b>다른 동에서 바로 받는 반</b><span class="mu">${oth.length}면</span></div>
-    ${oth.map(n => `<div class="srcL">${src(n)}</div>${bvRowH(n, bld, c)}`).join('')}</div>`);
-  const hint = F ? '' : `<div class="bvFo hint">👆 <b>배전반</b>을 누르면 층별 분전반 목록이 펼쳐지고 오른쪽 건물에 그 층이 표시돼요 · 오른쪽 <b>층</b>을 누르면 그 층 반 목록${UIX.edit ? ' · 층 정하기는 [▦ 층 배치]에서 끌어서' : ''}</div>`;
-  return `${hint}<div class="bvD"><div class="bvCards">${cards.join('') || '<div class="bvCard"><div class="bvR x"><span class="mu">이 동에 들어오는 반이 아직 없어요. 계통 트리에 TR·배전반을 넣으면 여기에 나와요.</span></div></div>'}</div>
-    <div class="bvSec"><div class="bvSecT">${F ? `<b>${esc(label(F))}</b> 이(가) 가는 층` : '층별 반 수'}</div>${bvSecSvg(bld, c, hot, ent)}</div></div>`;
+/* ---------- 현황 보기 (기본): UPS 목록(→ UPS 부하) · 중요 부하 목록 · 오른쪽 건물 단면 ---------- */
+// 그 반 아래 끝 회로들 (예비·빈 자리 제외)
+function bvLeaves(P) { const o = []; const w = n => kids(n.id).forEach(k => { if (isSlot(k)) return; if (kids(k.id).length) return w(k); if ((k.type === 'LOAD' || k.type === 'CB') && !ckSpare(k)) o.push(k); }); w(P); return o; }
+const bvUpsOf = n => { let x = par(n), g = 0; while (x && g++ < 80) { if (x.type === 'UPS') return x; x = par(x); } return null; };
+const bvPanelOf = n => { let x = par(n), g = 0; while (x && g++ < 80) { if (BV_PT[x.type]) return x; x = par(x); } return null; };
+function bvLoadRow(n, c, cols) {
+  const p = bvPanelOf(n), bkp = effSrc(n) === 'E' ? '<span class="bk e">🔌 비상</span>' : bvUpsOf(n) ? '<span class="bk u">🔋 UPS</span>' : '<span class="bk x">⚠ 없음</span>';
+  const m = {cat: `<td>${n.imp ? `<span class="ic">${esc(n.imp)}</span>` : ''}</td>`, name: `<td><b>${esc(n.name || label(n))}</b></td>`, pnl: `<td>${p ? esc(label(p)) : ''}</td>`,
+    fl: `<td>${esc(bvFloorUp(n, c))}</td>`, sp: `<td>${esc(spec(n))}${n.kw ? ' · ' + esc(n.kw) + 'kW' : ''}</td>`, bk: `<td>${bkp}</td>`};
+  return `<tr class="c" data-bvld="${esc(n.id)}" title="${esc(pathOf(n).map(label).join(' › '))}\n누르면 부하도면">${cols.map(k => m[k]).join('')}</tr>`;
 }
+function bvUpsH(bld, c) {
+  const U = S.nodes.filter(n => n.type === 'UPS' && !isSlot(n) && bk(n) === bld);
+  // 중요 부하에 'UPS'로 표시했는데 트리에서 UPS 아래가 아닌 것 → 따로 묶음
+  const loose = S.nodes.filter(n => n.imp === 'UPS' && bk(n) === bld && !bvUpsOf(n) && !kids(n.id).length);
+  if (!U.length && !loose.length) return `<div class="bvBox"><h3>🔋 UPS <small>0대</small></h3><div class="mu">이 동에 UPS가 아직 없어요.</div></div>`;
+  const kva = n => n.kva ? n.kva + 'kVA' : ((n.name || '').match(/(\d+(\.\d+)?)\s*kVA/i) || [])[0] || '';
+  const hd = '<thead><tr><th>부하</th><th>분전반</th><th>층</th><th>정격</th><th>중요</th></tr></thead>';
+  const one = u => {
+    const L = bvLeaves(u), inp = bvPanelOf(u), out = bvCh(u.id, bld), open = BV.u === u.id || L.length <= 12;
+    return `<div class="bvUps"><div class="uh" data-bvu="${esc(u.id)}">${bvMini(u, 24)}<b>${esc(label(u))}</b>${kva(u) ? `<span class="kv">${esc(kva(u))}</span>` : ''}
+        <span class="mu">${esc(bvFloorUp(u, c) || '층 미지정')}</span><span class="mu">받는 곳 ${inp ? esc(label(inp)) : '—'}</span><span class="mu">출력 → ${out.length ? out.map(x => esc(label(x))).join(', ') : '—'}</span>
+        <span class="sp"></span><span class="cnt">부하 <b>${L.length}</b></span><button data-bvgo2="${esc(u.id)}">📍 도면</button></div>
+      ${L.length ? `<table class="tb bvT">${hd}<tbody>${(open ? L : L.slice(0, 12)).map(n => bvLoadRow(n, c, ['name', 'pnl', 'fl', 'sp', 'cat'])).join('')}</tbody></table>${open ? '' : `<button class="more" data-bvu="${esc(u.id)}">▾ ${L.length - 12}개 더 보기</button>`}`
+        : '<div class="mu" style="padding:4px 8px">UPS 아래 회로가 아직 없어요 (출력 분전반 회로를 넣으면 여기 나와요)</div>'}</div>`;
+  };
+  return `<div class="bvBox"><h3>🔋 UPS <small>${U.length}대 · 부하 ${U.reduce((s, u) => s + bvLeaves(u).length, 0) + loose.length}</small></h3>${U.map(one).join('')}
+    ${loose.length ? `<div class="bvUps"><div class="uh"><b>UPS 부하 (어느 UPS인지 트리에 아직 연결 안 됨)</b><span class="sp"></span><span class="cnt">부하 <b>${loose.length}</b></span></div>
+      <table class="tb bvT">${hd}<tbody>${loose.map(n => bvLoadRow(n, c, ['name', 'pnl', 'fl', 'sp', 'cat'])).join('')}</tbody></table></div>` : ''}</div>`;
+}
+function bvImpH(bld, c) {
+  // UPS 아래이거나 'UPS'로 분류한 부하는 위 UPS 목록에 → 여기선 빼기
+  const A = S.nodes.filter(n => n.imp && bk(n) === bld && !isSlot(n) && n.imp !== 'UPS' && !bvUpsOf(n));
+  const cats = {}; A.forEach(n => { cats[n.imp] = (cats[n.imp] || 0) + 1; });
+  const f = BV.ic && cats[BV.ic] ? BV.ic : '', L = A.filter(n => !f || n.imp === f).sort((a, b) => (IMP_CATS.indexOf(a.imp) - IMP_CATS.indexOf(b.imp)) || label(a).localeCompare(label(b)));
+  const nb = A.filter(n => effSrc(n) !== 'E').length;
+  return `<div class="bvBox"><h3>⭐ 중요 부하 <small>${A.length}개${A.length ? ` · 백업 없음 <b class="w">${nb}</b>` : ''} (UPS 부하는 위 UPS 목록에)</small></h3>
+    ${A.length ? `<div class="chips"><button data-bvic=""${f ? '' : ' class="on"'}>전체 ${A.length}</button>${Object.keys(cats).sort((a, b) => IMP_CATS.indexOf(a) - IMP_CATS.indexOf(b)).map(k => `<button data-bvic="${esc(k)}"${f === k ? ' class="on"' : ''}>${esc(k)} ${cats[k]}</button>`).join('')}</div>
+      <table class="tb bvT"><thead><tr><th>분류</th><th>부하</th><th>분전반</th><th>층</th><th>정격</th><th>백업</th></tr></thead><tbody>${L.map(n => bvLoadRow(n, c, ['cat', 'name', 'pnl', 'fl', 'sp', 'bk'])).join('')}</tbody></table>`
+    : '<div class="mu">중요 부하로 체크한 회로가 아직 없어요. 회로 속성창이나 [📁 파일 → 엑셀 일괄 수정]에서 체크하면 여기 모여요.</div>'}</div>`;
+}
+function bvStatus(bld, c) {
+  bvIndex();
+  const ent = bvPanels(bld).filter(n => { const p = bvBoxPar(n); return !p || bk(p) !== bld; });
+  return `<div class="bvD"><div class="bvCards">${bvUpsH(bld, c)}${bvImpH(bld, c)}</div>
+    <div class="bvSec"><div class="bvSecT">층별 반 수 <span class="mu">· 층을 누르면 목록</span></div>${bvSecSvg(bld, c, [], ent)}</div></div>`;
+}
+
 // 층을 누르면: 그 층 반 목록 (어느 배전반에서 오는지)
 function bvFloorList(f) {
   const bld = mapBldOf(BV.b), c = bvCfg(bld);
@@ -534,10 +539,11 @@ document.addEventListener('click', e => {
   const fo = t.closest('[data-bvfo]'); if (fo) { BV.f = fo.dataset.bvfo; renderView(); return; }
   const j = t.closest('[data-bvj]'); if (j && BV.f) { bvGo(j.dataset.bvj, BV.f); return; }
   const bld = mapBldOf(BV.b);
-  // 카드 보기: 배전반 줄 = 펼치기/접기 (하위 없으면 도면) · 목록 항목 = 도면 · 단면 층 = 그 층 목록
-  const rx = t.closest('[data-bvx]');
-  if (rx) { const x = byId(rx.dataset.bvx); if (!x) return;
-    if (bvDesc(x, bld).length || bvCanOpen(x, bld)) { BV.f = BV.f === x.id ? '' : x.id; renderView(); } else bvGo('plan', x.id); return; }
+  // 현황 보기: UPS 펼치기 · 부하 줄 = 부하도면 · 목록 항목 = 도면 · 단면 층 = 그 층 목록
+  const ru = t.closest('[data-bvu]'); if (ru && !t.closest('button:not(.more)')) { BV.u = BV.u === ru.dataset.bvu ? '' : ru.dataset.bvu; renderView(); return; }
+  const rg = t.closest('[data-bvgo2]'); if (rg) { bvGo('plan', rg.dataset.bvgo2); return; }
+  const rl = t.closest('[data-bvld]'); if (rl) { e.stopPropagation(); bvGo('load', rl.dataset.bvld); return; }   // #view의 tr.c 공통 처리로 안 넘어가게
+  const ri = t.closest('[data-bvic]'); if (ri) { BV.ic = ri.dataset.bvic; renderView(); return; }
   const rp = t.closest('[data-bvp]'); if (rp) { uiModalClose(); bvGo('plan', rp.dataset.bvp); return; }
   const rf = t.closest('[data-bvfl]'); if (rf) { bvFloorList(rf.dataset.bvfl); return; }
   // 반 박스: 하위가 있으면 펼치기 (펼친 걸 한 번 더 = 도면), 없으면 바로 배전반/분전반/MCC반 도면
@@ -618,6 +624,14 @@ body:not(.ro) #bvW svg{touch-action:none}#bvW .bvN:hover rect:first-child{stroke
 #view .bvOp .its{display:flex;flex-wrap:wrap;gap:5px}
 #view .bvOp .its .bvI{width:auto;flex:0 0 auto;margin:0}#view .bvI{display:inline-flex;align-items:center;gap:5px;padding:3px 9px 3px 5px;border:1px solid #cbd5e1;background:#fff;border-radius:16px;font-size:12px;cursor:pointer}#view .bvI:hover{border-color:#262f7d;background:#eef2ff}
 #view .bvI small{color:#94a3b8}#view .bvI small.up{color:#7c3aed}#view .bvI.ld{color:#15803d;border-color:#86efac;background:#f0fdf4}#view .bvI.out{color:#0e7490;border-color:#67e8f9;background:#ecfeff}
+#view .bvBox{border:1.5px solid #cbd5e1;border-radius:10px;background:#fff;padding:8px 10px}#view .bvBox h3{margin:0 0 6px;font-size:15px;color:#262f7d}#view .bvBox h3 small{font-size:12px;color:#64748b;font-weight:400}#view .bvBox h3 b.w{color:#dc2626}
+#view .bvUps{border:1px solid #e2e8f0;border-radius:8px;margin-top:6px;overflow:hidden}
+#view .bvUps .uh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 8px;background:#f0fdf4;cursor:pointer;font-size:12.5px}#view .bvUps .uh b{color:#15803d;font-size:14px}#view .bvUps .uh .kv{background:#15803d;color:#fff;border-radius:9px;padding:0 7px;font-size:11.5px;font-weight:700}
+#view .bvUps .uh .sp{flex:1}#view .bvUps .uh .cnt b{color:#15803d;font-size:14px}#view .bvUps .uh button,#view .bvUps .more{padding:2px 8px;border:1px solid #d6dbe8;background:#fff;border-radius:6px;font-size:12px;cursor:pointer}#view .bvUps .more{margin:4px 8px;width:auto}
+#view .bvT{width:100%;font-size:12.5px;margin:0}#view .bvT td,#view .bvT th{padding:4px 8px}#view .bvT tr.c{cursor:pointer}#view .bvT tr.c:hover{background:#eef2ff}
+#view .bvT .ic{background:#fef3c7;color:#92400e;border-radius:9px;padding:0 7px;font-size:11.5px;white-space:nowrap}
+#view .bvT .bk{font-size:11.5px;font-weight:700;white-space:nowrap}#view .bvT .bk.e{color:#dc2626}#view .bvT .bk.u{color:#15803d}#view .bvT .bk.x{color:#b45309}
+#view .bvBox .chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}#view .bvBox .chips button{padding:3px 10px;border:1px solid #d6dbe8;background:#fff;border-radius:14px;font-size:12px;cursor:pointer}#view .bvBox .chips button.on{background:#262f7d;color:#fff;border-color:#262f7d}
 #view .bvSec{width:290px;flex:none;position:sticky;top:0;border:1.5px solid #cbd5e1;border-radius:10px;background:#fff;padding:8px}#view .bvSec svg{display:block;width:100%;height:auto}
 #view .bvSecT{font-size:12.5px;color:#475569;margin-bottom:4px}#view .bvSecT b{color:#b45309}
 #view .bvFl:hover rect:first-of-type{stroke:#262f7d;stroke-width:2}
