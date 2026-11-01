@@ -1,6 +1,7 @@
 /* =========================================================
    bldview.js — 건물 안 보기 (공장 지도에서 건물 더블클릭)
-   - 한 화면에 층을 가로 띠로 (위가 높은 층), 반은 간단한 박스 (종류 아이콘 · 이름 · 전압)
+   - 한 화면에 층을 가로 띠로 (위가 높은 층), 반은 박스 (실제 모습 그림 · 이름 · 전압 · 회로/ACB 수)
+     그림: 분전반(문 연 외함·차단기 줄) · MCC반(서랍 유닛) · 배전반(ACB) · 고압반(VCB) · 몰드 TR · UPS
    - 맨 위 '수전' 줄에서 들어오는 선 → TR → 배전반은 늘 선으로. 나머지 반은 흐리게
    - 배전반(하위가 있는 반)을 누르면 하위 분전반·MCC반·배전반·바로 나가는 부하까지 선이 이어짐
      → 하위 반을 누르면 '배전반/분전반/MCC반' 도면, 부하 칩을 누르면 부하도면
@@ -88,8 +89,8 @@ function bvCanOpen(n, bld) {
 }
 
 /* ---------- 층 띠 배치 ---------- */
-const BV_LW = 92, BV_GUT = 40, BV_X0 = BV_LW + BV_GUT, BV_W = 1140;   // 층 이름 칸 · 왼쪽 간선 자리 · 전체 폭
-const BV_BX = 168, BV_BY = 50, BV_GX = 12, BV_GY = 24, BV_PAD = 12, BV_HDR = 60;   // 박스 · 간격(가로/세로) · 위쪽 수전 줄
+const BV_LW = 92, BV_GUT = 40, BV_X0 = BV_LW + BV_GUT, BV_W = 1150;   // 층 이름 칸 · 왼쪽 간선 자리 · 전체 폭
+const BV_BX = 172, BV_BY = 62, BV_GX = 12, BV_GY = 24, BV_PAD = 12, BV_HDR = 60;   // 박스 · 간격(가로/세로) · 위쪽 수전 줄
 const BV_CW = 164, BV_CH = 28;                                                     // 부하 칩
 const BV_ORD = {TR: -1, MDB: 0, MCC: 1, UPS: 2, PNL: 3};
 const BV_VC = v => { const x = pV(v); return x >= 1000 ? '#ea580c' : x >= 440 ? '#7c3aed' : x >= 380 ? '#2563eb' : x >= 220 ? '#0d9488' : '#64748b'; };
@@ -109,7 +110,9 @@ function bvBand(bld, f, c) {
   const P = bvPanels(bld).filter(n => bvFloorOf(n, c) === f);
   const fixed = [], auto = [];
   P.forEach(n => { const p = c.pos[n.id]; (p && p.x != null ? fixed : auto).push(n); });
-  const taken = fixed.map(n => ({n, x: c.pos[n.id].x, y: c.pos[n.id].y, fixed: 1}));
+  // 저장된 자리라도 겹치면 (박스 크기가 바뀐 경우 등) 옆 빈자리로
+  const taken = [];
+  fixed.sort((a, b) => c.pos[a.id].y - c.pos[b.id].y || c.pos[a.id].x - c.pos[b.id].x).forEach(n => { const q = bvFree(c.pos[n.id].x, c.pos[n.id].y, taken); taken.push({n, ...q, fixed: 1}); });
   auto.sort((a, b) => BV_ORD[a.type] - BV_ORD[b.type] || pV(effV(b)) - pV(effV(a)) || label(a).localeCompare(label(b)));
   let cx = BV_PAD, cy = BV_PAD;
   auto.forEach(n => { const q = bvFree(cx, cy, taken); taken.push({n, ...q}); cx = q.x; cy = q.y; });
@@ -124,13 +127,107 @@ function bvChipBand(d) {
   items.forEach((t, i) => { t.x = BV_PAD + (i % per) * (BV_CW + 10); t.y = 22 + Math.floor(i / per) * (BV_CH + 14); });
   return {items: [], chips: items, H: 22 + Math.ceil(items.length / per) * (BV_CH + 14) + 4};
 }
-// 종류 아이콘 (TR·배전반·MCC·분전반·UPS)
-function bvIcon(t, x, y, c) {
-  if (t === 'TR') return `<g transform="translate(${x},${y})" fill="none" stroke="${c}" stroke-width="2.2"><circle cx="14" cy="10" r="8.5" fill="#fff"/><circle cx="14" cy="21" r="8.5"/></g>`;
-  if (t === 'MDB') return `<g transform="translate(${x},${y})"><rect x="1" y="1" width="26" height="30" rx="2" fill="#fff" stroke="${c}" stroke-width="2"/><path d="M10 1v30M18 1v30" stroke="${c}" stroke-width="1.6"/><path d="M4 8h3M12 8h3M20 8h3M4 14h3M12 14h3M20 14h3" stroke="${c}" stroke-width="2"/></g>`;
-  if (t === 'MCC') return `<g transform="translate(${x},${y})"><rect x="1" y="1" width="26" height="30" rx="2" fill="#fff" stroke="${c}" stroke-width="2"/><path d="M1 8h26M1 15h26M1 22h26" stroke="${c}" stroke-width="1.6"/><circle cx="22" cy="4.5" r="1.5" fill="${c}"/><circle cx="22" cy="11.5" r="1.5" fill="${c}"/><circle cx="22" cy="18.5" r="1.5" fill="${c}"/><circle cx="22" cy="26" r="1.5" fill="${c}"/></g>`;
-  if (t === 'UPS') return `<g transform="translate(${x},${y})"><rect x="1" y="6" width="23" height="20" rx="3" fill="#fff" stroke="${c}" stroke-width="2"/><rect x="24" y="12" width="3" height="8" fill="${c}"/><path d="M14 9l-5 8h5l-2 7 6-9h-5z" fill="${c}"/></g>`;
-  return `<g transform="translate(${x},${y})"><rect x="1" y="3" width="26" height="26" rx="2" fill="#fff" stroke="${c}" stroke-width="2"/><rect x="5" y="7" width="18" height="3" fill="${c}"/>${[13, 19, 25].map(yy => `<rect x="5" y="${yy - 1}" width="7" height="3.5" rx="1" fill="${c}"/><rect x="16" y="${yy - 1}" width="7" height="3.5" rx="1" fill="${c}"/>`).join('')}</g>`;
+/* ---------- 설비 그림 (실제 모습 비슷하게, 40×54) ---------- */
+const BV_DEFS = `<defs>
+  <linearGradient id="bvGc" x1="0" x2="1"><stop offset="0" stop-color="#b8bcb4"/><stop offset=".5" stop-color="#d3d6cf"/><stop offset="1" stop-color="#aeb2aa"/></linearGradient>
+  <linearGradient id="bvGd" x1="0" x2="1"><stop offset="0" stop-color="#c3c6bf"/><stop offset="1" stop-color="#d9dcd5"/></linearGradient>
+  <linearGradient id="bvGk" x1="0" x2="1"><stop offset="0" stop-color="#9a5a1c"/><stop offset=".35" stop-color="#e3a04a"/><stop offset=".65" stop-color="#c47a2c"/><stop offset="1" stop-color="#8a4f17"/></linearGradient>
+  <linearGradient id="bvGa" x1="0" x2="1"><stop offset="0" stop-color="#e2e8f0"/><stop offset=".5" stop-color="#ffffff"/><stop offset="1" stop-color="#e2e8f0"/></linearGradient>
+</defs>`;
+// 분전반: 문 열린 외함 · 위 메인 MCCB · 가운데 부스바 · 양쪽 분기 차단기 줄
+function bvPicPNL(ups) {
+  let r = '';
+  for (let y = 18.5; y < 47; y += 3.1) {
+    r += `<rect x="5.5" y="${y}" width="8.5" height="2.6" rx=".4" fill="#fbfbfb" stroke="#9ca3af" stroke-width=".35"/><rect x="8.6" y="${y + .75}" width="2.4" height="1.1" fill="#1f2937"/>`;
+    r += `<rect x="26" y="${y}" width="8.5" height="2.6" rx=".4" fill="#fbfbfb" stroke="#9ca3af" stroke-width=".35"/><rect x="29" y="${y + .75}" width="2.4" height="1.1" fill="#1f2937"/>`;
+    r += `<path d="M14.6 ${y + 1.3}h10.8" stroke="${(y * 10 | 0) % 2 ? '#2f55c8' : '#b8732f'}" stroke-width="1.1"/>`;
+  }
+  return `<rect x=".5" y=".5" width="39" height="53" rx="1.5" fill="url(#bvGc)" stroke="#6b7068"/>
+    <rect x="2.6" y="2.6" width="34.8" height="48.8" fill="#e7e9e4" stroke="#9aa096" stroke-width=".5"/>
+    <rect x="15" y="16.5" width="10" height="32" fill="#cfd8f3" opacity=".7"/>
+    <rect x="14.5" y="5" width="11" height="9.5" rx=".6" fill="#f3f4f6" stroke="#4b5563" stroke-width=".5"/><rect x="18.8" y="6.6" width="2.4" height="4.4" fill="#1f2937"/><rect x="16" y="12.2" width="8" height="1.8" fill="#facc15"/>
+    <rect x="33" y="4" width="1.4" height="11" fill="#c2783c"/><rect x="35" y="4" width="1.4" height="11" fill="#c2783c"/>${r}
+    ${ups ? '<circle cx="33" cy="47" r="5" fill="#0f766e"/><path d="M33.8 43.4l-2.6 4h2l-.8 3 2.8-4.2h-2z" fill="#fff"/>' : ''}`;
+}
+// MCC반: 여러 열 · 서랍(유닛)마다 돌리는 손잡이 + 표시등
+function bvPicMCC() {
+  let r = '';
+  [1.6, 14.4, 27.2].forEach((x, ci) => {
+    r += `<rect x="${x}" y="1.6" width="11.2" height="5.8" fill="url(#bvGd)" stroke="#8a8f87" stroke-width=".4"/>${ci === 0 ? `<rect x="${x + 2}" y="3.4" width="7" height="2" fill="#fff" stroke="#9ca3af" stroke-width=".3"/>` : ''}`;
+    for (let i = 0; i < 5; i++) {
+      const y = 8 + i * 8.8, red = ci === 2 && i === 4;
+      r += `<rect x="${x}" y="${y}" width="11.2" height="8.4" fill="${red ? '#dc2626' : 'url(#bvGd)'}" stroke="#8a8f87" stroke-width=".4"/>
+        <circle cx="${x + 3.3}" cy="${y + 4.3}" r="2.3" fill="#4b5563" stroke="#1f2937" stroke-width=".4"/><path d="M${x + 1.6} ${y + 5.4}l3.4-2.2" stroke="#d1d5db" stroke-width=".7"/>
+        <rect x="${x + 6.6}" y="${y + 1.6}" width="3.4" height="2" fill="#f8fafc" stroke="#64748b" stroke-width=".25"/>
+        <circle cx="${x + 6.9}" cy="${y + 6}" r=".75" fill="#16a34a"/><circle cx="${x + 8.4}" cy="${y + 6}" r=".75" fill="#f8fafc" stroke="#64748b" stroke-width=".2"/><circle cx="${x + 9.9}" cy="${y + 6}" r=".75" fill="#dc2626"/>`;
+    }
+  });
+  return `<rect x=".5" y=".5" width="39" height="53" rx="1" fill="#9ea39a" stroke="#6b7068"/>${r}<rect x="13" y="1" width="1.4" height="52" fill="#7b8077"/><rect x="25.8" y="1" width="1.4" height="52" fill="#7b8077"/>`;
+}
+// 배전반(저압): 위 계측기 · 가운데 ACB(인출형) · 아래 문
+function bvPicMDB(acb) {
+  const brk = acb
+    ? `<rect x="4" y="13" width="32" height="25" fill="#5b6470"/><path d="M5 15.5h30M5 17.5h30" stroke="#7b8592" stroke-width=".8"/>
+       <rect x="7" y="19" width="26" height="15.5" rx=".8" fill="url(#bvGa)" stroke="#94a3b8" stroke-width=".5"/>
+       <rect x="15.5" y="19" width="6" height="15.5" fill="#1f2937"/><rect x="16.6" y="21" width="3.8" height="2.4" fill="#475569"/><circle cx="17.5" cy="27" r=".7" fill="#e5e7eb"/><circle cx="19.5" cy="27" r=".7" fill="#e5e7eb"/><circle cx="17.5" cy="29.5" r=".7" fill="#e5e7eb"/><circle cx="19.5" cy="29.5" r=".7" fill="#e5e7eb"/>
+       <circle cx="24.8" cy="23.6" r="1.8" fill="#dc2626"/><circle cx="29.2" cy="23.6" r="1.8" fill="#16a34a"/><rect x="24" y="28" width="7" height="1.5" fill="#cbd5e1"/>
+       <rect x="8" y="34.5" width="24" height="2.6" fill="#334155"/><circle cx="20" cy="35.8" r=".9" fill="#94a3b8"/>`
+    : `<rect x="4" y="13" width="32" height="25" fill="url(#bvGd)" stroke="#8a8f87" stroke-width=".4"/>
+       ${[8, 20.5].map(x => `<rect x="${x}" y="16" width="11" height="15" rx=".6" fill="#f3f4f6" stroke="#4b5563" stroke-width=".5"/><rect x="${x + 4.3}" y="19" width="2.4" height="5.5" fill="#1f2937"/>`).join('')}`;
+  return `<rect x=".5" y=".5" width="39" height="53" rx="1" fill="url(#bvGc)" stroke="#6b7068"/>
+    <rect x="12" y="2.6" width="16" height="3" fill="#fff" stroke="#9ca3af" stroke-width=".3"/>
+    <rect x="6" y="7" width="6.5" height="4.5" fill="#f8fafc" stroke="#475569" stroke-width=".4"/><rect x="7" y="8" width="4.5" height="2" fill="#0f766e"/>
+    <rect x="16.5" y="7" width="6.5" height="4.5" fill="#f8fafc" stroke="#475569" stroke-width=".4"/><rect x="17.5" y="8" width="4.5" height="2" fill="#0f766e"/>
+    <circle cx="28" cy="9.3" r="1.1" fill="#16a34a"/><circle cx="31.2" cy="9.3" r="1.1" fill="#f59e0b"/><circle cx="34.4" cy="9.3" r="1.1" fill="#dc2626"/>
+    ${brk}
+    <rect x="2" y="39.5" width="36" height="12.5" fill="url(#bvGd)" stroke="#8a8f87" stroke-width=".4"/><rect x="31.5" y="42.5" width="1.6" height="5.5" rx=".6" fill="#111827"/><path d="M5 50h10" stroke="#8a8f87" stroke-width=".5"/>`;
+}
+// 고압반(VCB PANEL): 양문 · 디지털 계전기 · 표시등 · 손잡이
+function bvPicVCB() {
+  return `<rect x=".5" y=".5" width="39" height="53" rx="1" fill="#b4b7a6" stroke="#6b7060"/>
+    <rect x="11" y="1.6" width="18" height="3.4" fill="#f8fafc" stroke="#9ca3af" stroke-width=".3"/><text x="20" y="4.3" text-anchor="middle" font-size="2.6" font-weight="bold" fill="#334155">V.C.B</text>
+    <path d="M20 6v47" stroke="#7f8370" stroke-width=".8"/><rect x="2" y="6" width="36" height="46.5" fill="none" stroke="#8b8f7c" stroke-width=".5"/>
+    <rect x="24" y="11" width="11" height="13" rx=".6" fill="#e5e7eb" stroke="#64748b" stroke-width=".4"/><rect x="25.5" y="12.5" width="8" height="4.5" fill="#94a3b8"/><rect x="26" y="13" width="7" height="3.5" fill="#cbd5e1"/>
+    ${[0, 1, 2, 3].map(i => `<rect x="${25.6 + i * 2}" y="18.5" width="1.3" height="1.3" fill="#1f2937"/><rect x="${25.6 + i * 2}" y="21" width="1.3" height="1.3" fill="${i === 3 ? '#dc2626' : '#1f2937'}"/>`).join('')}
+    <circle cx="25.5" cy="30" r="1.3" fill="#16a34a"/><circle cx="29.5" cy="30" r="1.3" fill="#f97316"/><circle cx="33.5" cy="30" r="1.3" fill="#dc2626"/>
+    <rect x="24.5" y="33.5" width="2.8" height="2.8" fill="#f8fafc" stroke="#475569" stroke-width=".3"/><rect x="29" y="33.5" width="2.8" height="2.8" fill="#f8fafc" stroke="#475569" stroke-width=".3"/><circle cx="34.5" cy="35" r="1.8" fill="#f59e0b" stroke="#78350f" stroke-width=".3"/>
+    <rect x="13.5" y="31" width="1.4" height="5" rx=".6" fill="#111827"/><rect x="21.5" y="31" width="1.4" height="5" rx=".6" fill="#111827"/>
+    <rect x="15.5" y="28" width="5" height="3.4" fill="#dc2626"/><rect x="24" y="48" width="4" height="2" fill="#dc2626"/><rect x="30" y="48" width="4" height="2" fill="#111827"/>`;
+}
+// 변압기(몰드): 위·아래 철심 · 3상 코일 · 고압 단자
+function bvPicTR() {
+  return `<rect x="1" y="47" width="38" height="4" fill="#475569"/><circle cx="6" cy="52" r="1.6" fill="#1f2937"/><circle cx="34" cy="52" r="1.6" fill="#1f2937"/>
+    <rect x="2.5" y="9" width="35" height="4" fill="#374151"/><rect x="2.5" y="43" width="35" height="4" fill="#374151"/>
+    ${[3.5, 14.5, 25.5].map(x => `<rect x="${x}" y="12.5" width="11" height="31" rx="2.2" fill="url(#bvGk)" stroke="#78350f" stroke-width=".4"/>
+      <path d="M${x} 18h11M${x} 38h11" stroke="#78350f" stroke-width=".5" opacity=".6"/><rect x="${x + 4.3}" y="12.5" width="2.4" height="31" fill="#fbbf24" opacity=".25"/>
+      <path d="M${x + 5.5} 9V3.5" stroke="#64748b" stroke-width="1"/><ellipse cx="${x + 5.5}" cy="5.5" rx="1.8" ry=".9" fill="#d6d3d1"/><ellipse cx="${x + 5.5}" cy="7.3" rx="1.8" ry=".9" fill="#d6d3d1"/><circle cx="${x + 5.5}" cy="3" r="1" fill="#b45309"/>`).join('')}`;
+}
+// UPS: 캐비닛 · 화면 · 버튼 · 통풍구
+function bvPicUPS() {
+  return `<rect x="3" y=".5" width="34" height="53" rx="2" fill="#e5e7eb" stroke="#6b7280"/><rect x="3" y=".5" width="34" height="5" rx="2" fill="#374151"/>
+    <rect x="9" y="9" width="22" height="11" rx="1" fill="#1f2937"/><rect x="10.5" y="10.5" width="19" height="8" fill="#38bdf8"/><path d="M12 16h5M12 13.5h9" stroke="#0c4a6e" stroke-width=".9"/><rect x="24" y="12" width="4" height="5" fill="none" stroke="#0c4a6e" stroke-width=".8"/>
+    <circle cx="13" cy="24" r="1.4" fill="#16a34a"/><circle cx="17.5" cy="24" r="1.4" fill="#f59e0b"/><circle cx="22" cy="24" r="1.4" fill="#dc2626"/><rect x="25.5" y="22.6" width="5" height="2.8" rx=".5" fill="#9ca3af"/>
+    ${[30, 33, 36, 39, 42, 45].map(y => `<rect x="8" y="${y}" width="24" height="1.4" rx=".7" fill="#9ca3af"/>`).join('')}
+    <path d="M22 48.5l-3 4h2.2l-.8 3" stroke="#15803d" stroke-width="0" />`;
+}
+function bvPic(n, x, y) {
+  const s = n.type === 'TR' ? bvPicTR() : n.type === 'MCC' ? bvPicMCC() : n.type === 'UPS' ? bvPicUPS()
+    : n.type === 'MDB' ? (pV(effV(n)) >= 1000 ? bvPicVCB() : bvPicMDB(bvAcb(n).length > 0))
+    : bvPicPNL(/UPS/i.test(n.name || ''));
+  return `<g transform="translate(${x},${y})">${s}</g>`;
+}
+// 그 반에 붙은 ACB: 아래 피더 ACB + 바로 위 메인 ACB (다른 반을 거치지 않은 것)
+function bvAcb(P) {
+  const o = []; const walk = n => kids(n.id).forEach(k => { if (BV_PT[k.type] || isSlot(k)) return; if (k.type === 'CB' && k.cbk === 'ACB') o.push(k); walk(k); }); walk(P);
+  let u = par(P), g = 0; while (u && !BV_PT[u.type] && g++ < 20) { if (u.type === 'CB' && u.cbk === 'ACB') o.push(u); u = par(u); }   // 바로 위 메인 ACB (TR → ACB → 배전반)
+  return o;
+}
+
+// 박스 셋째 줄: 회로 수 · ACB 수 · 1차 전압
+function bvInfo(n) {
+  if (n.type === 'TR') return n.v1 ? '1차 ' + n.v1 : '';
+  if (n.type === 'MDB') { const a = bvAcb(n).length, f = kids(n.id).filter(k => !isSlot(k)).length; return [a ? 'ACB ' + a : '', f ? '피더 ' + f : ''].filter(Boolean).join(' · '); }
+  const c = kids(n.id).filter(k => !isSlot(k) && !BV_PT[k.type]).length; return c ? '회로 ' + c : '';
 }
 function bvBoxSvg(t, x, y, o) {
   const n = t.n, v = (n.type === 'TR' ? n.v2 : '') || effV(n) || '전압?', vc = BV_VC(v);
@@ -140,9 +237,10 @@ function bvBoxSvg(t, x, y, o) {
   return `<g class="bvN${o.dim ? ' dim' : ''}${n.id === BV.f ? ' foc' : ''}" data-bvn="${esc(n.id)}" transform="translate(${x},${y})" style="cursor:${UIX.edit ? 'grab' : 'pointer'}"><title>${esc(pathOf(n).map(label).join(' › '))}\n${tip}</title>
     <rect width="${BV_BX}" height="${BV_BY}" rx="7" fill="#fff" stroke="${sel ? '#f59e0b' : K.c}" stroke-width="${sel ? 3.5 : 1.6}"/>
     <rect width="6" height="${BV_BY}" rx="3" fill="${vc}"/>
-    ${bvIcon(n.type === 'PNL' && /UPS/i.test(n.name || '') ? 'UPS' : n.type, 12, 9, K.c)}
-    <text x="46" y="21" font-size="13" font-weight="bold" fill="#0f172a">${esc(sdFit(label(n), BV_BX - 52, 13))}</text>
-    <text x="46" y="38" font-size="11" fill="#64748b">${n.type === 'TR' ? '' : `<tspan fill="${K.c}" font-weight="bold">${esc(K.l)}</tspan> · `}<tspan fill="${vc}" font-weight="bold">${esc(v)}</tspan>${n.type === 'TR' && n.kva ? ' · ' + esc(n.kva) + 'kVA' : ''}</text>
+    ${bvPic(n, 10, 4)}
+    <text x="57" y="21" font-size="13" font-weight="bold" fill="#0f172a">${esc(sdFit(label(n), BV_BX - 64, 13))}</text>
+    <text x="57" y="${n.type === 'TR' ? 38 : 37}" font-size="11" fill="#64748b">${n.type === 'TR' ? '' : `<tspan fill="${K.c}" font-weight="bold">${esc(K.l)}</tspan> · `}<tspan fill="${vc}" font-weight="bold">${esc(v)}</tspan>${n.type === 'TR' && n.kva ? ' · ' + esc(n.kva) + 'kVA' : ''}</text>
+    <text x="57" y="53" font-size="10" fill="#94a3b8">${esc(sdFit(bvInfo(n), 84, 10))}</text>
     ${o.open && !UIX.edit ? `<text x="${BV_BX - 7}" y="${BV_BY - 6}" text-anchor="end" font-size="10" font-weight="bold" fill="${n.id === BV.f ? '#f59e0b' : '#94a3b8'}">${n.id === BV.f ? '▾' : '▸'}${typeof o.open === 'number' ? o.open : ''}</text>` : ''}
     ${em ? `<circle cx="${BV_BX - 10}" cy="10" r="4" fill="#dc2626"><title>비상 회로 있음</title></circle>` : ''}${im ? `<circle cx="${BV_BX - (em ? 20 : 10)}" cy="10" r="4" fill="#f59e0b"><title>중요 부하 있음</title></circle>` : ''}</g>`;
 }
@@ -196,7 +294,7 @@ function bvSvg(bld, c) {
     bvPanels(bld).filter(n => n.type === 'TR' && R[n.id]).forEach(t => { const ch = bvCh(t.id, bld).filter(n => R[n.id]); if (ch.length) G.push({from: t, to: ch.map(n => R[n.id]), col: BV_VC(t.v2 || outV(t))}); });
   }
   const dim = n => !UIX.edit && !lit.has(n.id);
-  const o = [`<svg xmlns="http://www.w3.org/2000/svg" id="bvSvg" viewBox="0 0 ${BV_W} ${y}" font-family="Malgun Gothic,sans-serif">`];
+  const o = [`<svg xmlns="http://www.w3.org/2000/svg" id="bvSvg" viewBox="0 0 ${BV_W} ${y}" font-family="Malgun Gothic,sans-serif">` + BV_DEFS];
   // 위쪽 수전 줄
   const grp = {}; ent.forEach(n => { const s = srcOf(n), k = `${s ? bk(s) || '?' : '수전'} ${inV(n) || effV(n) || ''}`.trim(); grp[k] = (grp[k] || 0) + 1; });
   o.push(`<g class="bvHdr"><rect x="0" y="0" width="${BV_W}" height="${BV_HDR}" fill="#fff7ed"/><line x1="0" y1="${BV_HDR}" x2="${BV_W}" y2="${BV_HDR}" stroke="#94a3b8" stroke-width="2"/>
