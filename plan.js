@@ -153,7 +153,7 @@ function plView(){
     h+=`<div class="plEd"><span class="gp"><button data-pla="put">📍 선택 항목 배치</button><button data-pla="seq">⋯ 연속 배치</button>${hasM?`<button data-pla="unput">마커 지우기</button> 이름표 ${['u','d','l','r'].map((d,i)=>`<button data-lbd="${d}"${(sel.lbd||'u')===d?' class="on"':''}>${'↑↓←→'[i]}</button>`).join('')}`:''}</span>`;
     if(H)h+=`<span class="gp">${Object.entries(PL_IC).map(([k,v])=>`<button data-plt="${k}"${PL.tool===k?' class="on"':''}>${v.s} ${v.l}</button>`).join('')}<button data-plt="box"${PL.tool==='box'?' class="on"':''}>▭ 범위</button>${PL.selIc?'<button data-pla="delIc" class="dng">선택 아이콘 삭제</button>':''}</span>`;
     h+=(P.f?`<button data-pla="img">🖼 도면 이미지 교체</button><button data-pla="renF">✎ 층 이름 변경</button><button data-pla="bldF">🏢 동 지정</button><button data-pla="delF" class="dng">🗑 층 도면 삭제</button>`:`<button data-pla="img">🖼 이미지 교체</button><button data-pla="delS" class="dng">🗑 이 장 삭제</button>`)+'</div>';}
-  if(PL.place){const n=byId(PL.place.ids[0]);h+=`<div class="plHint">📍 도면을 클릭해 <b>${esc(n?label(n):'')}</b> 위치를 찍으세요 · 남은 ${PL.place.ids.length}개 · Esc 종료</div>`;}
+  if(PL.place){const n=byId(PL.place.ids[0]);h+=`<div class="plHint">📍 도면을 클릭해 <b>${esc(n?label(n):'')}</b> 위치를 찍으세요 · 남은 ${PL.place.ids.length}개 · Esc 종료 <button data-plcx="1" style="margin-left:6px;padding:3px 12px;border:1px solid #1e3a8a;background:#fff;color:#1e3a8a;border-radius:6px;font-size:12px">취소</button></div>`;}
   else if(PL.tool&&H){const n=byId(plIcNid(P));h+=`<div class="plHint">${PL.tool==='box'?'▭ 도면에서 끌어서 범위를 그리세요':'도면을 클릭할 때마다 <b>'+PL_IC[PL.tool].l+'</b> 추가'} · 연결 회로: <b>${n?esc(label(n)):'없음 (트리에서 회로를 먼저 고르면 연결돼요)'}</b> · Esc 종료</div>`;}
   if(!P)h+=`<div class="empty">아직 층 도면이 없어요. 위쪽 <b>[+ 층 도면]</b>으로 층 도면 이미지를 올려 주세요.${UI.bld?'<br>(지금은 '+esc(UI.bld)+'만 보고 있어요)':''}</div>`;
   else if(H&&!zc)h+=`<div class="empty"><b>${esc(label(H))}</b>의 부하도면이 아직 없어요.<br><br><button class="plBtn" data-pla="mkZ">📄 부하도면 만들기</button></div>`;
@@ -225,6 +225,7 @@ document.addEventListener('click',e=>{const t=e.target;if(!t.closest||UI.tab!=='
   const P=plParse(PL.cur),sel=byId(UI.sel),go=()=>{plKeep();renderView();};let b;
   if(b=t.closest('[data-plf]')){PL.cur=plFK(b.dataset.plf);PL.place=null;PL.tool='';PL.keep=true;return go();}
   if(b=t.closest('[data-plz]')){PL.cur=plZK(b.dataset.plz,1);PL.place=null;PL.tool='';PL.keep=true;return go();}
+  if(b=t.closest('[data-plcx]')){PL.place=null;PL.tool='';return go();}
   if(b=t.closest('[data-pls]')){PL.cur=plZK(P.id,+b.dataset.pls);PL.selIc='';PL.keep=true;return go();}
   if(b=t.closest('[data-plv]')){PL.vf=b.dataset.plv;return go();}
   if(b=t.closest('[data-plt]')){const k=b.dataset.plt;PL.tool=PL.tool===k?'':k;PL.place=null;return go();}

@@ -11,8 +11,10 @@ const mbMQ = window.matchMedia('(max-width: 760px)');
 function mbSet(v) {
   MB.view = v;
   document.body.dataset.mv = v;
-  document.querySelectorAll('#mbNav button').forEach(b => b.classList.toggle('on', b.dataset.mv === v));
+  const hv = v === 'main' && UI.tab === 'plan' ? 'plan' : v;   // 위치(도면) 화면이면 📍에 불
+  document.querySelectorAll('#mbNav button').forEach(b => b.classList.toggle('on', b.dataset.mv === hv));
   if (v === 'main') setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 30);   // 그림 높이 다시 맞춤
+  if (v === 'field' && typeof fdRender === 'function') fdRender();
   window.scrollTo(0, 0);
 }
 function mbApply() {
@@ -20,26 +22,30 @@ function mbApply() {
   MB.on = mbMQ.matches;
   if (was !== MB.on) try { SD.z = 0; } catch (e) {}   // 화면 크기가 바뀌면 단선도 다시 맞춤
   document.body.classList.toggle('mob', MB.on);
-  if (MB.on && !document.body.dataset.mv) mbSet('main');
+  if (MB.on && !document.body.dataset.mv) mbSet('field');   // 핸드폰 첫 화면 = 현장
 }
 // 정보 화면(보기 모드 속성창) 위에 붙는 바로가기
 function mbJump(n) {
   if (!MB.on || !n) return '';
   const box = FP_BOX[n.type] || n.type === 'MDB' || kids(n.id).length;
-  return `<div class="mbJump">${box ? `<button data-mbgo="dg">▦ 회로도</button>` : ''}<button data-mbgo="sld">⚡ 단선도에서 보기</button><button data-mbgo="map">🗺 지도</button></div>`;
+  return `<div class="mbJump">${box ? `<button data-mbgo="dg">▦ 회로도</button><button data-mbfd="${esc(n.id)}">📋 현장에서 입력</button>` : ''}<button data-mbgo="sld">⚡ 단선도에서 보기</button><button data-mbgo="map">🗺 지도</button></div>`;
 }
 
 (function () {
   const nav = document.createElement('nav');
   nav.id = 'mbNav';
-  nav.innerHTML = '<button data-mv="tree">🌲<span>계통</span></button><button data-mv="main">🗺<span>화면</span></button><button data-mv="info">ℹ<span>정보</span></button>';
+  nav.innerHTML = '<button data-mv="field">📋<span>현장</span></button><button data-mv="tree">🌲<span>계통</span></button><button data-mv="plan">📍<span>위치</span></button><button data-mv="main">🗺<span>화면</span></button><button data-mv="info">ℹ<span>정보</span></button>';
   document.body.appendChild(nav);
   mbApply(); if (MB.on) renderAll();
   mbMQ.addEventListener('change', () => { mbApply(); renderAll(); });
 
   document.addEventListener('click', e => {
     const t = e.target; if (!t.closest) return;
-    const nb = t.closest('#mbNav [data-mv]'); if (nb) { mbSet(nb.dataset.mv); return; }
+    const nb = t.closest('#mbNav [data-mv]');
+    if (nb) { if (nb.dataset.mv === 'plan') { UI.tab = 'plan'; saveUI(); renderAll(); mbSet('main'); return; }
+      if (nb.dataset.mv === 'main' && UI.tab === 'plan') { UI.tab = 'map'; saveUI(); renderAll(); }
+      mbSet(nb.dataset.mv); return; }
+    const fg = t.closest('[data-mbfd]'); if (fg && typeof FDS !== 'undefined') { FDS.pid = fg.dataset.mbfd; FDS.ed = ''; fdKeep(); mbSet('field'); return; }
     const go = t.closest('[data-mbgo]');
     if (go) { UI.tab = go.dataset.mbgo; saveUI(); renderAll(); mbSet('main'); return; }
   });
@@ -47,7 +53,16 @@ function mbJump(n) {
   // 트리가 바로 다시 그려지므로 먼저(capture) 확인
   document.addEventListener('click', e => {
     const t = e.target; if (!MB.on || !t.closest) return;
-    if (t.closest('#tree .trow, #favBox .fv2R, #tree .srow') && !t.closest('.tg, .ck, [data-tg], [data-fvf], button')) setTimeout(() => mbSet('info'), 0);
+    // 반이나 회로를 고르면 '현장' 화면으로 (반 → 회로 목록, 회로 → 입력 시트), 그 밖은 정보
+    if (t.closest('#tree .trow, #favBox .fv2R, #tree .srow') && !t.closest('.tg, .ck, [data-tg], [data-fvf], button')) setTimeout(() => {
+      const n = byId(UI.sel);
+      if (typeof FDS !== 'undefined' && n) {
+        if (fdIsBox(n)) { FDS.pid = n.id; FDS.ed = ''; fdKeep(); return mbSet('field'); }
+        const P = fdLeaf(n) ? pathOf(n).slice(0, -1).reverse().find(fdIsBox) : null;
+        if (P) { FDS.pid = P.id; FDS.ed = n.id; fdKeep(); return mbSet('field'); }
+      }
+      mbSet('info');
+    }, 0);
   }, true);
 
   // 정보(보기 모드)에 바로가기 붙이기
@@ -73,7 +88,7 @@ body.mob #tabs{overflow-x:auto;flex-wrap:nowrap;padding:0 4px}body.mob #tabs but
 body.mob #view{padding:8px}
 body.mob #mbNav{display:flex;position:fixed;left:0;right:0;bottom:0;height:58px;background:#fff;border-top:1px solid #dde1ea;z-index:60;box-shadow:0 -2px 10px rgba(15,23,42,.08)}
 body.mob #mbNav button{flex:1;border:0;background:none;font-size:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:#64748b;border-radius:0}
-body.mob #mbNav button span{font-size:11px}body.mob #mbNav button.on{color:#262f7d;background:#eef2ff;font-weight:700}
+body.mob #mbNav button{font-size:19px}body.mob #mbNav button span{font-size:11px}body.mob #mbNav button.on{color:#262f7d;background:#eef2ff;font-weight:700}
 body.mob .mbJump{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 body.mob .mbJump button{flex:1;min-width:100px;padding:10px 8px;border:1px solid #c7d2fe;background:#eef2ff;color:#262f7d;border-radius:8px;font-size:13px;font-weight:600}
 body.mob #tree .trow{padding-top:7px;padding-bottom:7px}
@@ -81,7 +96,8 @@ body.mob #mpCard{position:static;width:auto;max-height:none;margin-top:8px;box-s
 body.mob #view .sdBar h2,body.mob #view .mpBar h2{font-size:15px}
 body.mob #view .sdBar .muted,body.mob #view .mpBar .muted{display:none}
 body.mob #mFile .mList{position:fixed;left:8px;right:8px;top:48px;min-width:0}
-body.mob #mdl .mdlB{width:96vw;padding:14px}`;
+body.mob #mdl .mdlB{width:96vw;padding:14px}
+body.mob #toast{left:10px;right:10px;bottom:68px;transform:none;font-size:14px;padding:10px 12px}body.mob #toast #tMsg{flex:1}`;
   document.head.appendChild(s);
   renderForm();
 })();
