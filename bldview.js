@@ -405,7 +405,8 @@ function bvFocusBar(bld) {
     <button data-bvj="plan">📍 도면 위치</button><button data-bvj="load">📄 부하도면</button><button data-bvj="dg">▦ 회로도</button><button data-bva="unf" title="접기">✕</button></div>`;
 }
 function bvList(key) {
-  const A = (BV.lists || {})[key] || [], c = bvCfg(mapBldOf(BV.b));
+  const c = bvCfg(mapBldOf(BV.b)), fo = n => { const f = bvFloorUp(n, c); return f ? bvLv(f) : 999; };   // 층 순서 (B1 → 1F → 2F …, 층 미지정은 맨 뒤)
+  const A = ((BV.lists || {})[key] || []).slice().sort((a, b) => fo(a) - fo(b) || String(a.name || label(a)).localeCompare(String(b.name || label(b)), 'ko', {numeric: true}));
   uiModal(`<h3>${esc(mapName(MAP_BLD.find(x => x.id === BV.b)))} · ${A.length}개</h3><div class="mdlS"><table class="tb"><thead><tr><th>층</th><th>종류</th><th>명칭</th><th>사양</th><th>상위</th></tr></thead><tbody>
     ${A.slice(0, 800).map(n => `<tr class="c" data-bvgo="${esc(n.id)}"><td>${esc(bvFloorUp(n, c))}</td><td>${esc(tlabel(n))}</td><td>${esc(label(n))}</td><td>${esc(spec(n))}${n.kw ? ' · ' + esc(n.kw) + 'kW' : ''}</td><td>${esc(par(n) ? label(par(n)) : '')}</td></tr>`).join('')}
     </tbody></table></div><div class="mdlA"><button data-mdl="x">닫기</button></div>`, true);
@@ -475,7 +476,7 @@ function bvKpi(bld, T, L, U, imp, nb) {
   </div>`;
 }
 function bvUpsH(bld, c) {
-  const U = S.nodes.filter(n => n.type === 'UPS' && !isSlot(n) && bk(n) === bld).sort((a, b) => bvLv(bvFloorUp(b, c)) - bvLv(bvFloorUp(a, c)) || label(a).localeCompare(label(b)));
+  const U = S.nodes.filter(n => n.type === 'UPS' && !isSlot(n) && bk(n) === bld).sort((a, b) => (bvFloorUp(a, c) ? bvLv(bvFloorUp(a, c)) : 999) - (bvFloorUp(b, c) ? bvLv(bvFloorUp(b, c)) : 999) || label(a).localeCompare(label(b), 'ko', {numeric: true}));
   const loose = S.nodes.filter(n => n.imp === 'UPS' && bk(n) === bld && !bvUpsOf(n) && !kids(n.id).length);
   const tiles = U.map(u => ({id: u.id, u, L: bvLeaves(u)}));
   if (loose.length) tiles.push({id: '@loose', L: loose});
@@ -528,7 +529,7 @@ function bvStatus(bld, c, T, L) {
 // 층을 누르면: 그 층 반 목록 (어느 배전반에서 오는지)
 function bvFloorList(f) {
   const bld = mapBldOf(BV.b), c = bvCfg(bld);
-  const A = bvPanels(bld).filter(n => bvFloorOf(n, c) === f).sort((a, b) => BV_ORD[a.type] - BV_ORD[b.type] || label(a).localeCompare(label(b)));
+  const A = bvPanels(bld).filter(n => bvFloorOf(n, c) === f).sort((a, b) => BV_ORD[a.type] - BV_ORD[b.type] || String(a.name || label(a)).localeCompare(String(b.name || label(b)), 'ko', {numeric: true}));
   const top = n => { let x = bvBoxPar(n), last = null, g = 0; while (x && bk(x) === bld && g++ < 40) { if (x.type === 'MDB') last = x; x = bvBoxPar(x); } return last; };
   uiModal(`<h3>${esc(mapName(MAP_BLD.find(x => x.id === BV.b)))} · ${esc(bvFlTxt(f))} · ${A.length}면</h3><div class="mdlS"><table class="tb"><thead><tr><th></th><th>종류</th><th>명칭</th><th>전압</th><th>받는 배전반</th><th>바로 위</th></tr></thead><tbody>
     ${A.map(n => { const t = top(n), p = bvBoxPar(n); return `<tr class="c" data-bvp="${esc(n.id)}"><td>${bvMini(n, 14)}</td><td>${esc(bvKind(n).l)}</td><td>${esc(label(n))}</td><td>${esc(effV(n))}</td><td>${t ? esc(label(t)) : ''}</td><td>${p && (!t || p.id !== t.id) ? esc(label(p)) : ''}</td></tr>`; }).join('')}
@@ -569,7 +570,7 @@ document.addEventListener('click', e => {
   const j = t.closest('[data-bvj]'); if (j && BV.f) { bvGo(j.dataset.bvj, BV.f); return; }
   const bld = mapBldOf(BV.b);
   // 현황 보기: UPS 펼치기 · 부하 줄 = 부하도면 · 목록 항목 = 도면 · 단면 층 = 그 층 목록
-  const ru = t.closest('[data-bvu]'); if (ru) { BV.u = ru.dataset.bvu; renderView(); return; }
+  const ru = t.closest('[data-bvu]'); if (ru) { BV.u = ru.dataset.bvu; if (byId(BV.u)) select(BV.u, true); else renderView(); return; }   // UPS 타일 = 계통 트리에서도 펼쳐서 표시
   const rg = t.closest('[data-bvgo2]'); if (rg) { bvGo('plan', rg.dataset.bvgo2); return; }
   const rl = t.closest('[data-bvld]'); if (rl) { e.stopPropagation(); bvGo('load', rl.dataset.bvld); return; }   // #view의 tr.c 공통 처리로 안 넘어가게
   const ri = t.closest('[data-bvic]'); if (ri) { BV.ic = ri.dataset.bvic; renderView(); return; }
