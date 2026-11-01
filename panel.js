@@ -18,13 +18,13 @@ function pvFit(s,w,fs){s=String(s);let x=0;for(let i=0;i<s.length;i++){x+=(s.cha
 function pvBrk(x,y,P,bh,pw,k,amp){
   const afs=Math.max(8,Math.round(bh*.3)),ex=k==='E'?10:0;
   let w=pw*P+5+ex;if(amp)w=Math.max(w,Math.ceil(amp.length*afs*.62)+10+ex);
-  const B={M:'fill="#27272a" stroke="#000"',E:'fill="#d4d4d8" stroke="#71717a"',U:'fill="#f1f5f9" fill-opacity=".55" stroke="#94a3b8" stroke-dasharray="3 2"'}[k];
-  const hc=k==='U'?'#cbd5e1':'#09090b',tc=k==='U'?'#e2e8f0':'#f4f4f5',txt={M:'#fff',E:'#18181b',U:'#64748b'}[k],hh=Math.round(bh*.45);
+  const B={M:'fill="url(#pvBm)" stroke="#8a8f87"',E:'fill="url(#pvBe)" stroke="#8a8f87"',U:'fill="#f1f5f9" fill-opacity=".55" stroke="#94a3b8" stroke-dasharray="3 2"'}[k];
+  const hc=k==='U'?'#cbd5e1':'#1f2937',tc=k==='U'?'#e2e8f0':'#6b7280',txt={M:'#1f2937',E:'#1f2937',U:'#64748b'}[k],hh=Math.round(bh*.45);
   let o=`<rect x="${x}" y="${y}" width="${w}" height="${bh}" rx="2" ${B}/>`;
   const hx0=x+(w-ex-(pw*P-3))/2;
-  for(let i=0;i<P;i++){const hx=hx0+i*pw;o+=`<rect x="${hx}" y="${y+3}" width="${pw-3}" height="${hh}" rx="1" fill="${hc}"/><rect x="${hx+2}" y="${y+4}" width="${pw-7}" height="${Math.round(hh*.45)}" rx="1" fill="${tc}"/>`;}
+  for(let i=0;i<P;i++){const hx=hx0+i*pw;o+=k==='U'?`<rect x="${hx}" y="${y+3}" width="${pw-3}" height="${hh}" rx="1" fill="${hc}"/>`:`<rect x="${hx}" y="${y+3}" width="${pw-3}" height="${hh}" rx="1.5" fill="#d6d3d1" stroke="#a8a29e" stroke-width=".6"/><rect x="${hx+1.5}" y="${y+4}" width="${pw-6}" height="${Math.round(hh*.55)}" rx="1" fill="${hc}"/><rect x="${hx+2.5}" y="${y+4.5}" width="${pw-8}" height="1.6" fill="${tc}"/>`;}
   if(amp)o+=`<text x="${x+(w-ex)/2}" y="${y+bh-3}" text-anchor="middle" font-size="${afs}" font-weight="bold" fill="${txt}">${esc(amp)}</text>`;
-  if(k==='E')o+=`<circle cx="${x+w-7}" cy="${y+bh-7}" r="3.2" fill="#facc15" stroke="#a16207" stroke-width=".8"/>`;
+  if(k==='E')o+=`<circle cx="${x+w-7}" cy="${y+bh-7}" r="3.2" fill="#facc15" stroke="#a16207" stroke-width=".8"/><rect x="${x+w-10}" y="${y+3}" width="6" height="3" rx=".5" fill="#2563eb"/>`;
   return {o,w};
 }
 
@@ -37,7 +37,7 @@ function pvSvg(h){
   const C=kids(h.id),rows=Math.max(1,Math.ceil(C.length/2)),W=760,cx=380,y0=214,H=y0+rows*RH+60;
   const mp=Math.max(3,Math.min(4,parseInt(h.poles)||parseInt(POLES[h.wire])||(!effV(h)||pV(effV(h))===380?4:3))),hasN=mp>=4,pc=hasN?[0,1,2,3]:[0,1,2];
   const o=[`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Malgun Gothic,sans-serif">`,
-   `<defs><linearGradient id="pvC" x1="0" x2="1"><stop offset="0" stop-color="#c7cdd4"/><stop offset=".5" stop-color="#eef1f4"/><stop offset="1" stop-color="#c7cdd4"/></linearGradient><linearGradient id="pvM" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f3f46"/><stop offset="1" stop-color="#111113"/></linearGradient></defs>`,
+   `<defs><linearGradient id="pvC" x1="0" x2="1"><stop offset="0" stop-color="#c7cdd4"/><stop offset=".5" stop-color="#eef1f4"/><stop offset="1" stop-color="#c7cdd4"/></linearGradient><linearGradient id="pvM" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#cfd2d6"/><stop offset=".5" stop-color="#eef0f2"/><stop offset="1" stop-color="#c4c8cc"/></linearGradient><linearGradient id="pvBm" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e7e5e4"/><stop offset=".5" stop-color="#fafaf9"/><stop offset="1" stop-color="#e2e0de"/></linearGradient><linearGradient id="pvBe" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f1f5f9"/><stop offset=".5" stop-color="#ffffff"/><stop offset="1" stop-color="#eef2f6"/></linearGradient><linearGradient id="pvAc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e0f2fe" stop-opacity=".18"/><stop offset=".45" stop-color="#ffffff" stop-opacity=".42"/><stop offset="1" stop-color="#e0f2fe" stop-opacity=".18"/></linearGradient></defs>`,
    `<rect width="${W}" height="${H}" fill="#fff"/><rect x="12" y="12" width="${W-24}" height="${H-24}" rx="8" fill="url(#pvC)" stroke="${pvKindOf(h).c}" stroke-width="5"/><rect x="30" y="30" width="${W-60}" height="${H-60}" rx="4" fill="#e7e9ec" stroke="#9ca3af"/>`,
    `<rect x="5" y="70" width="9" height="34" rx="2" fill="#9ca3af" stroke="#6b7280"/><rect x="5" y="${H-104}" width="9" height="34" rx="2" fill="#9ca3af" stroke="#6b7280"/>`];
   [[42,42],[W-42,42],[42,H-42],[W-42,H-42]].forEach(([x,y])=>o.push(`<circle cx="${x}" cy="${y}" r="4" fill="#d1d5db" stroke="#6b7280"/>`));
@@ -52,13 +52,18 @@ function pvSvg(h){
   /* 메인 차단기 */
   const mw=26*mp+22,mx=cx-mw/2,my=100,mh=80;
   pc.forEach(i=>o.push(`<line x1="${cx+PV_OFF[i]}" y1="${my+mh}" x2="${cx+PV_OFF[i]}" y2="${y0-10}" stroke="${PV_COL[i]}" stroke-width="4"/>`));
-  o.push(`<rect x="${mx}" y="${my}" width="${mw}" height="${mh}" rx="4" fill="url(#pvM)" stroke="#000"/><text x="${cx}" y="${my+13}" text-anchor="middle" font-size="9" fill="#e5e7eb" font-weight="bold">MAIN</text>`);
-  for(let i=0;i<mp;i++){const sx=mx+13+i*26;o.push(`<rect x="${sx}" y="${my+19}" width="18" height="38" rx="2" fill="#09090b"/><rect x="${sx+3}" y="${my+21}" width="12" height="15" rx="2" fill="#f4f4f5"/>`);}
-  o.push(`<text x="${cx}" y="${my+mh-8}" text-anchor="middle" font-size="11" fill="#fff" font-weight="bold">${esc((h.rating?pvAmp(h)+' ':'')+mp+'P')}</text>`);
+  o.push(`<rect x="${mx-4}" y="${my-6}" width="${mw+8}" height="${mh+6}" rx="3" fill="#6b7280"/><rect x="${mx}" y="${my}" width="${mw}" height="${mh-16}" rx="4" fill="url(#pvM)" stroke="#6b7280"/>`,
+    `<rect x="${mx+6}" y="${my+5}" width="${mw-12}" height="9" rx="1.5" fill="#9ca3af"/><text x="${cx}" y="${my+12.5}" text-anchor="middle" font-size="7.5" fill="#f9fafb" font-weight="bold">MAIN · ${esc((h.rating?pvAmp(h)+' ':'')+mp+'P')}</text>`,
+    `<rect x="${cx-9}" y="${my+19}" width="18" height="${mh-42}" rx="2" fill="#374151"/><rect x="${cx-6}" y="${my+22}" width="12" height="${(mh-42)*.5}" rx="1.5" fill="#111827"/><rect x="${cx-4}" y="${my+24}" width="8" height="5" rx="1" fill="#dc2626"/>`,
+    `<rect x="${cx-46}" y="${my+mh-14}" width="92" height="14" rx="2" fill="#facc15" stroke="#a16207"/><path d="M${cx-41} ${my+mh-3} l5 -9 l5 9z" fill="#111827"/><text x="${cx+5}" y="${my+mh-4}" text-anchor="middle" font-size="8.5" font-weight="bold" fill="#111827">DANGER 전기위험</text>`);
   /* 모선 */
   const bt=y0-10,bl=rows*RH+14;
   pc.forEach(i=>o.push(`<rect x="${cx+PV_OFF[i]-3}" y="${bt}" width="6" height="${bl}" fill="${PV_COL[i]}"/><text x="${cx+PV_OFF[i]}" y="${bt+bl+16}" text-anchor="middle" font-size="9" fill="#374151">${['L1','L2','L3','N'][i]}</text>`));
   o.push(`<rect x="${cx-34}" y="${bt-4}" width="68" height="8" rx="2" fill="#d6d3d1" stroke="#78716c"/><rect x="${cx-34}" y="${bt+bl-4}" width="68" height="8" rx="2" fill="#d6d3d1" stroke="#78716c"/>`);
+  PV_COVER={x:cx-44,y:bt-8,w:88,h:bl+16};   // 아크릴 커버는 차단기 그린 뒤 맨 위에
+  [W-112,W-92].forEach((gx,j)=>{o.push(`<rect x="${gx}" y="96" width="9" height="104" rx="2" fill="${j?'#2563eb':'#b8732f'}" stroke="#78350f" stroke-width=".6"/>`);for(let k=0;k<9;k++)o.push(`<circle cx="${gx+4.5}" cy="${103+k*11}" r="2.2" fill="#e7e5e4" stroke="#57534e" stroke-width=".5"/>`);});
+  o.push(`<text x="${W-97}" y="214" text-anchor="middle" font-size="9" fill="#4b5563">E · N</text>`);
+  for(let k=0;k<5;k++)o.push(`<circle cx="${cx-160+k*80}" cy="${H-44}" r="9" fill="#d1d5db" stroke="#9ca3af"/>`);
   if(!C.length)o.push(`<text x="${cx}" y="${y0+30}" text-anchor="middle" font-size="13" fill="#6b7280">회로가 없어요 – 위쪽 [+ …] 버튼으로 추가하세요</text>`);
   /* 분기 회로 */
   let ph=0;
@@ -86,8 +91,10 @@ function pvSvg(h){
       card+=`<g data-open="${esc(n.id)}" style="cursor:pointer"><title>하위 ${kc}개 열기</title><circle cx="${ax}" cy="${cy}" r="${r}" fill="${sel?'#fff':'#0f766e'}"/><path d="M${ax-r*.35} ${cy-r*.45}L${ax+r*.5} ${cy}L${ax-r*.35} ${cy+r*.45}Z" fill="${sel?'#262f7d':'#fff'}"/></g>`;}
     o.push(`<g class="pvr" data-id="${esc(n.id)}" style="cursor:pointer"><title>${esc(label(n))} — 클릭: 선택 · 더블클릭: 이름 입력</title>${ln}${b.o}${sel?`<rect x="${bx-3}" y="${y-3}" width="${bw+6}" height="${bh+6}" rx="4" fill="none" stroke="#262f7d" stroke-width="2"/>`:''}${card}</g>`);
   });
+  if(PV_COVER){const c=PV_COVER;o.push(`<g pointer-events="none"><rect x="${c.x}" y="${c.y}" width="${c.w}" height="${c.h}" rx="4" fill="url(#pvAc)" stroke="#94a3b8" stroke-width="1.2"/><path d="M${c.x+10} ${c.y+6}V${c.y+c.h-6}" stroke="#fff" stroke-width="2" opacity=".55"/>${[c.y+10,c.y+c.h-10].map(yy=>`<circle cx="${c.x+8}" cy="${yy}" r="2.6" fill="#cbd5e1" stroke="#64748b" stroke-width=".6"/><circle cx="${c.x+c.w-8}" cy="${yy}" r="2.6" fill="#cbd5e1" stroke="#64748b" stroke-width=".6"/>`).join('')}</g>`);PV_COVER=null;}
   o.push('</svg>');return o.join('');
 }
+let PV_COVER=null;
 
 /* 결선도 탭 화면 */
 function pvHtml(h){
