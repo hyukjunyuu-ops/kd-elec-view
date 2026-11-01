@@ -58,7 +58,7 @@ const MAP_CARS = (() => {
   return c;
 })();
 
-const MAP = {step: 0, auto: false, edit: false, selB: '', drag: null, lay: {hv: 1, lv: 0, em: 1}, cardMin: false, det: false};   // cardMin = 건물 카드 접기 · det = 전체 경로 자세히
+const MAP = {step: 0, auto: false, edit: false, selB: '', drag: null, lay: {hv: 1, lv: 0, em: 1}, cardMin: false};   // cardMin = 건물 카드 접기
 try { MAP.cardMin = !!localStorage.getItem('ckd_elec2_mpmin'); } catch (e) {}
 try { Object.assign(MAP.lay, JSON.parse(localStorage.getItem('ckd_elec2_maplay') || '{}')); } catch (e) {}
 let _mapT = 0;
@@ -360,47 +360,33 @@ function mapSum(bld, PA) {
   const sh = C[0].slice(0, k), split = sh[sh.length - 1];
   let html = sh.length ? `<div class="mpLine"><span class="pk">한전 22.9kV</span>${key(sh, true).map(n => '<i>→</i>' + nd(n)).join('')}${P.length > 1 ? `<span class="mpSp">에서 ${P.length}회선으로</span>` : ''}</div>` : '';
   // 갈라진 뒤: 회선(동 밖 마지막 차단기) → 이 동 입구(TR 등)
-  const rows = P.map(p => { const br = p.chain.slice(k), ent = p.n, fd = br.filter(n => bk(n) !== bld).pop() || br[0];
+  const rows = P.map(p => { const br = p.chain.slice(k), ent = p.n, fd = p.chain.filter(n => bk(n) !== bld).pop() || null;   // null = 한전에서 바로
     return {fd, ent, kva: ent.type === 'TR' && ent.kva ? Number(ent.kva).toLocaleString() + ' kVA' : '', v: ent.type === 'TR' ? ent.v2 || '' : effV(ent) || '', mid: br.filter(n => n !== fd && n !== ent)}; })
-    .sort((a, b) => label(a.fd).localeCompare(label(b.fd), 'ko', {numeric: true}));
-  html += `<table class="mpTb"><thead><tr><th>회선</th><th>${esc(bld)} 받는 곳</th><th>용량</th><th>전압</th></tr></thead><tbody>${rows.map(r => `<tr><td><a data-mpgo="${esc(r.fd.id)}">${esc(label(r.fd))}</a>${r.fd.cbk ? `<small> ${esc(r.fd.cbk)}</small>` : ''}</td>
+    .sort((a, b) => (a.fd ? label(a.fd) : '').localeCompare(b.fd ? label(b.fd) : '', 'ko', {numeric: true}));
+  html += `<table class="mpTb"><thead><tr><th>회선</th><th>${esc(bld)} 받는 곳</th><th>용량</th><th>전압</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.fd ? `<a data-mpgo="${esc(r.fd.id)}">${esc(label(r.fd))}</a>${r.fd.cbk ? `<small> ${esc(r.fd.cbk)}</small>` : ''}` : '한전 인입'}</td>
     <td><a data-mpgo="${esc(r.ent.id)}"><b>${esc(label(r.ent))}</b></a></td><td>${esc(r.kva)}</td><td><b style="color:${typeof BV_VC === 'function' ? BV_VC(r.v) : '#0f172a'}">${esc(r.v)}</b></td></tr>`).join('')}</tbody></table>`;
   // 한 문장
-  const srcB = bk(rows[0].fd), V = inV(rows[0].ent) || effV(rows[0].fd) || '', trs = rows.filter(r => r.ent.type === 'TR');
+  const srcB = rows[0].fd ? bk(rows[0].fd) : '한전', V = inV(rows[0].ent) || effV(rows[0].fd || rows[0].ent) || '', trs = rows.filter(r => r.ent.type === 'TR');
   const kv = trs.reduce((a, r) => a + (parseFloat(r.ent.kva) || 0), 0), vs = [...new Set(trs.map(r => r.v).filter(Boolean))];
   const from = split && bk(split) === srcB ? `${esc(srcB)} ${esc(label(key(sh, true).filter(n => n.type === 'TR').pop() || split))}` : esc(srcB);
   const jo = w => { const c = String(w).slice(-1).charCodeAt(0) - 0xAC00; return c >= 0 && c < 11172 ? (c % 28 ? '은' : '는') : '은(는)'; };   // 본동은 · 신관은 · 바이오동은
-  const txt = `<b>${esc(bld)}</b>${jo(bld)} ${from}에서 <b>${esc(V)} ${P.length}회선</b>${P.length > 1 ? `(${rows.map(r => esc(label(r.fd))).join(' · ')})` : ''}으로 받아` +
+  const txt = `<b>${esc(bld)}</b>${jo(bld)} ${from}에서 <b>${esc(V)} ${P.length}회선</b>${P.length > 1 && rows.every(r => r.fd) ? `(${rows.map(r => esc(label(r.fd))).join(' · ')})` : ''}으로 받아` +
     (trs.length ? `, <b>TR ${trs.length}대${kv ? ` (${kv.toLocaleString()} kVA)` : ''}</b>로 ${esc(vs.join(' / '))}를 만들어 써요.` : '요.');
   return {txt, html};
 }
 function mapCard() {
   const b = MAP_BLD.find(x => x.id === MAP.selB); if (!b) return '';
-  const bld = mapBldOf(b.id), N = S.nodes.filter(n => bk(n) === bld), E = mapEdges();
-  const inn = E.filter(e => e.b === bld), out = E.filter(e => e.a === bld);
+  const bld = mapBldOf(b.id), N = S.nodes.filter(n => bk(n) === bld);
   const ty = t => N.filter(n => n.type === t).length;
-  const src = N.filter(n => FP_SRC[n.type]), feedsMe = S.nodes.filter(n => FP_SRC[n.type] && byId(n.link) && bk(byId(n.link)) === bld);
-  const li = e => e.f.map(f => `<li><a data-mpgo="${esc(f.n.id)}">${esc(bk(f.n))} · ${esc(label(f.p))} → ${esc(label(f.n))}</a> <span class="muted">${esc(e.v)}</span></li>`).join('');
-  // 전원 경로: 한전 › … › 이 동 (동이 바뀌는 곳에 동 이름표)
-  const PA = mapPaths(bld), step = n => { const T = TYPES[n.type] || {c: '#64748b'}, sp = n.type === 'TR' ? [n.kva ? n.kva + 'kVA' : '', `${effV(n) || '?'}/${n.v2 || '?'}`].filter(Boolean).join(' ') : n.cbk || '';
-    return `<a data-mpgo="${esc(n.id)}" class="pc" style="border-color:${T.c}">${esc(label(n))}${sp ? `<small>${esc(sp)}</small>` : ''}</a>`; };
-  const chain = c => { let h = '<span class="pk">한전 22.9kV</span>', pb = '';
-    c.forEach(n => { const b2 = bk(n); if (b2 !== pb) { h += `<span class="pb" style="background:${fpBcol(b2)}">${esc(b2)}</span>`; pb = b2; } h += step(n); }); return h; };
-  const MAXP = 5, sm = mapSum(bld, PA);
+  const src = N.filter(n => FP_SRC[n.type]), PA = mapPaths(bld), sm = mapSum(bld, PA);
   const head = `<div class="mpH"><span class="x" data-mpa="close" title="닫기">✕</span><span class="x" data-mpa="min" title="${MAP.cardMin ? '펼치기' : '접기'}">${MAP.cardMin ? '▾' : '▴'}</span><b>${esc(mapName(b))}</b>
     <div>${N.length ? `TR ${ty('TR')} · 분전반 ${N.filter(n => FP_BOX[n.type]).length} · 항목 ${N.length} · 비상 ${N.filter(n => effSrc(n) === 'E').length}` : '아직 이 동 데이터가 없어요'}</div></div>`;
   if (MAP.cardMin) return `<div id="mpCard" class="min">${head}<div class="mpBt"><button data-mpa="inside" class="pri">🏢 건물 안 보기</button></div></div>`;   // 접으면 머리줄만
   return `<div id="mpCard">${head}
-    ${PA.paths.length ? `<div class="mpS2">⚡ 어디서 오나</div>${sm.txt ? `<div class="mpSum">${sm.txt}</div>` : ''}${sm.html}
-      <div class="mpDet"><a data-mpa="det">${MAP.det ? '▴ 전체 경로 접기' : '▾ 전체 경로 자세히 (차단기 하나하나)'}</a></div>
-      ${MAP.det ? `<ol class="mpPath">${PA.paths.slice(0, MAXP).map(p => `<li>${chain(p.chain)}</li>`).join('')}</ol>${PA.paths.length > MAXP ? `<div class="muted" style="padding:0 12px">외 ${PA.paths.length - MAXP}개 경로</div>` : ''}` : ''}` : ''}
-    ${PA.srcs.length ? `<div class="mpS2">⚡ 비상 전원</div><ul>${PA.srcs.map(n => `<li><a data-mpgo="${esc(n.id)}">${esc(bk(n))} ${esc(label(n))}${n.kw ? ' ' + esc(n.kw) + 'kW' : ''}</a> → ${esc(label(byId(n.link)))}</li>`).join('')}</ul>` : ''}
-    ${out.length ? `<div class="mpS2">보내는 곳</div><ul>${out.map(li).join('')}</ul>` : ''}
-    <div class="mpS2">전원 설비</div><ul>${src.map(n => `<li><a data-mpgo="${esc(n.id)}">${esc(label(n))}${n.kw ? ' ' + esc(n.kw) + 'kW' : ''}</a> → ${byId(n.link) ? esc(bk(byId(n.link)) + ' ' + label(byId(n.link))) : '<i>공급 위치 조사 중</i>'}</li>`).join('') || '<li class="muted">없음</li>'}
-      ${feedsMe.filter(n => bk(n) !== bld).map(n => `<li>⚡ ${esc(bk(n))} ${esc(label(n))}에서 비상 전원 받음</li>`).join('')}</ul>
-    <div class="mpBt ed"><button data-mpadd="GEN">+ 발전기</button><button data-mpadd="PV">+ 태양광</button><button data-mpadd="ESS">+ ESS</button></div>
-    <div class="mpBt"><button data-mpa="inside" class="pri">🏢 건물 안 보기 (층별·현황)</button></div>
-    <div class="mpBt">${N.length ? `<button data-mpa="flow">⚡ 전기 Flow에서 보기</button><button data-mpa="tree">🌲 트리에서 이 동만</button>` : ''}</div>
+    ${PA.paths.length ? `<div class="mpS2">⚡ 어디서 오나</div>${sm.txt ? `<div class="mpSum">${sm.txt}</div>` : ''}${sm.html}` : ''}
+    ${UIX.edit ? `<div class="mpS2">전원 설비 <span class="muted">(편집)</span></div><ul>${src.map(n => `<li><a data-mpgo="${esc(n.id)}">${esc(label(n))}${n.kw ? ' ' + esc(n.kw) + 'kW' : ''}</a> → ${byId(n.link) ? esc(bk(byId(n.link)) + ' ' + label(byId(n.link))) : '<i>공급 위치 조사 중</i>'}</li>`).join('') || '<li class="muted">없음</li>'}</ul>
+    <div class="mpBt ed"><button data-mpadd="GEN">+ 발전기</button><button data-mpadd="PV">+ 태양광</button><button data-mpadd="ESS">+ ESS</button></div>` : ''}
+    <div class="mpBt"><button data-mpa="inside" class="pri">🏢 건물 안 보기</button>${N.length ? '<button data-mpa="flow">⚡ 전기 Flow</button>' : ''}</div>
     ${MAP.edit ? `<label class="mpS2">이 건물의 동 (데이터 이름)<select data-mpbm="${b.id}">${S.blds.map(x => `<option${x === bld ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select></label>` : ''}</div>`;
 }
 
@@ -459,7 +445,6 @@ document.addEventListener('click', e => {
     else if (v === 'edit') { MAP.edit = !MAP.edit; renderView(); }
     else if (v === 'close') { MAP.selB = ''; renderView(); }
     else if (v === 'min') { MAP.cardMin = !MAP.cardMin; try { localStorage.setItem('ckd_elec2_mpmin', MAP.cardMin ? '1' : ''); } catch (e) {} renderView(); }
-    else if (v === 'det') { MAP.det = !MAP.det; renderView(); }
     else if (v === 'png') mapPng();
     else if (v === 'flow' && b) { // 그 동으로 들어가는 첫 항목을 골라 단선도에서 경로 표시
       const B = mapBldOf(b.id), n = S.nodes.find(x => bk(x) === B && !FP_SRC[x.type] && (!par(x) || bk(par(x)) !== B)) || S.nodes.find(x => bk(x) === B);
@@ -535,7 +520,7 @@ document.addEventListener('pointerup', e => {
 #view .mpLay button{padding:4px 10px;border:1px solid #d6dbe8;background:#fff;border-radius:999px;font-size:12px;cursor:pointer;color:#94a3b8;display:inline-flex;align-items:center;gap:5px}
 #view .mpLay button i{display:inline-block;width:16px;height:4px;border-radius:2px;opacity:.35}
 #view .mpLay button.on{color:#0f172a;border-color:#94a3b8;background:#f8fafc}#view .mpLay button.on i{opacity:1}
-#mpCard ol.mpPath{margin:0;padding:2px 12px 4px 30px}#mpCard ol.mpPath li{margin:4px 0;line-height:1.9}
+
 #mpCard .pc{display:inline-flex;flex-direction:column;border:1.5px solid #cbd5e1;border-left-width:4px;border-radius:5px;padding:0 5px;margin:1px 2px;font-size:11.5px;color:#0f172a!important;line-height:1.3;vertical-align:middle;text-decoration:none}
 #mpCard .pc small{color:#64748b;font-size:10px}
 #mpCard .pc+.pc:before,#mpCard .pb+.pc:before{content:''}
@@ -547,7 +532,7 @@ document.addEventListener('pointerup', e => {
 #mpCard .mpSp{font-size:11.5px;color:#9a3412;font-weight:700;margin-left:3px}
 #mpCard .mpTb{width:calc(100% - 24px);margin:4px 12px;border-collapse:collapse;font-size:12px}#mpCard .mpTb th{background:#f8fafc;color:#64748b;font-size:11px;text-align:left;padding:4px 6px;border-bottom:1px solid #e2e8f0}
 #mpCard .mpTb td{padding:4px 6px;border-bottom:1px solid #f1f5f9}#mpCard .mpTb small{color:#94a3b8;font-size:10px}#mpCard .mpTb a{color:#0f172a;text-decoration:none}#mpCard .mpTb a:hover{text-decoration:underline}
-#mpCard .mpDet{padding:2px 12px 0;font-size:11.5px}#mpCard .mpDet a{color:#64748b}
+
 #mpCard .mpS2{display:block;font-weight:700;color:#262f7d;padding:8px 12px 2px}
 #mpCard ul{margin:0;padding:0 12px 0 28px}#mpCard li{margin:2px 0}#mpCard a{color:#1d4ed8;cursor:pointer}
 #mpCard .mpBt{display:flex;flex-wrap:wrap;gap:4px;padding:8px 12px 0}#mpCard .mpBt:last-of-type{padding-bottom:10px}
