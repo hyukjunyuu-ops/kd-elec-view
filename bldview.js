@@ -1,6 +1,7 @@
 /* =========================================================
    bldview.js — 건물 안 보기 (공장 지도에서 건물 더블클릭)
-   - 한 화면에 층을 가로 띠로 (위가 높은 층), 반은 박스 (실제 모습 그림 · 이름 · 전압 · 회로/ACB 수)
+   - 기본 = [▤ 배전반 카드]: 왼쪽 TR별 카드(배전반 줄 → 누르면 층별 분전반 목록) · 오른쪽 건물 단면(층별 반 수, 펼친 배전반이 가는 층 노랗게)
+   - [▦ 층 배치]: 한 화면에 층을 가로 띠로 (위가 높은 층), 반은 박스 (실제 모습 그림 · 이름 · 전압 · 회로/ACB 수)
      그림: 분전반(문 연 외함·차단기 줄) · MCC반(서랍 유닛) · 배전반(ACB) · 고압반(VCB) · 몰드 TR · UPS
    - 맨 위 '수전' 줄에서 들어오는 선 → TR → 배전반은 늘 선으로. 나머지 반은 흐리게
    - 배전반(하위가 있는 반)을 누르면 하위 분전반·MCC반·배전반·바로 나가는 부하까지 선이 이어짐
@@ -10,7 +11,8 @@
    - 오른쪽 현황표: 수전·받는 곳·배전반·ACB·MCC·분전반·UPS·비상부하·중요 부하·층별
    ========================================================= */
 
-const BV = {b: '', drag: null, rows: null, f: '', K: null};   // f = 눌러서 하위 계통을 펼친 반
+const BV = {b: '', drag: null, rows: null, f: '', K: null, mode: 'card'};   // mode: card = 배전반 카드 + 건물 단면 · band = 층 배치
+try { BV.mode = localStorage.getItem('ckd_elec2_bvmode') || 'card'; } catch (e) {}   // f = 눌러서 하위 계통을 펼친 반
 const BV_PT = {TR: 1, MDB: 1, MCC: 1, PNL: 1, UPS: 1};                // 박스로 그리는 종류
 
 /* ---------- 저장된 배치 ---------- */
@@ -371,9 +373,10 @@ function bvView() {
   const vs = [...new Set(bvPanels(bld).map(n => effV(n) || '전압?'))].sort((a, b) => pV(b) - pV(a));
   return `<div class="bvBar"><button data-bva="back">◀ 공장 지도</button><h2>${esc(nm)}</h2>
       <span class="bvLg">${vs.map(v => `<i style="background:${BV_VC(v)}"></i>${esc(v)}`).join('')}<i class="d" style="background:#f59e0b"></i>중요 부하<i class="d" style="background:#dc2626"></i>비상</span><span class="sp"></span>
-      ${UIX.edit ? '<button data-bva="tidy">▦ 겹침 정리</button><button data-bva="reset">↺ 자동 배치</button><button data-bva="addf">+ 층 추가</button><button data-bva="delf">− 층 삭제</button>' : ''}
+      <span class="bvMd"><button data-bva="card"${BV.mode === 'band' ? '' : ' class="on"'}>▤ 배전반 카드</button><button data-bva="band"${BV.mode === 'band' ? ' class="on"' : ''}>▦ 층 배치</button></span>
+      ${UIX.edit && BV.mode === 'band' ? '<button data-bva="tidy">▦ 겹침 정리</button><button data-bva="reset">↺ 자동 배치</button><button data-bva="addf">+ 층 추가</button><button data-bva="delf">− 층 삭제</button>' : ''}
       <button data-bva="csv">📊 이 동 목록 엑셀</button></div>
-    ${UIX.edit ? '<div class="bvHint">✎ 편집: 박스를 끌어서 배치 · 다른 층 띠로 끌면 층이 바뀌어요 · 겹치면 옆 빈자리로 비켜요</div>' : ''}
+    ${UIX.edit && BV.mode === 'band' ? '<div class="bvHint">✎ 편집: 박스를 끌어서 배치 · 다른 층 띠로 끌면 층이 바뀌어요 · 겹치면 옆 빈자리로 비켜요</div>' : ''}
     <div class="bvSum">
       ${R('수전', T.TR.length ? `TR ${T.TR.length}대 · <b>${T.kva.toLocaleString()}</b> kVA` : '—', L('tr', T.TR))}
       ${R('배전반', `<b>${T.mdb.length}</b>`, L('mdb', T.mdb))}${R('ACB', `<b>${T.acb.length}</b>`, L('acb', T.acb))}${R('MCC반', `<b>${T.mcc.length}</b>`, L('mcc', T.mcc))}
@@ -384,8 +387,7 @@ function bvView() {
       ${T.gen.length ? R('비상 전원', T.gen.map(n => `${esc(label(n))}${n.kw ? ' ' + esc(n.kw) + 'kW' : ''}`).join(' · '), L('gen', T.gen)) : ''}
       ${T.PA.paths.length ? `<span class="bvS pa"><em>받는 곳</em>${pathTxt.replace(/<br>/g, ' · ')}</span>` : ''}
     </div>
-    ${bvFocusBar(bld)}
-    <div id="bvW">${bvSvg(bld, c)}</div>`;
+    ${BV.mode === 'band' ? `${bvFocusBar(bld)}<div id="bvW">${bvSvg(bld, c)}</div>` : `<svg width="0" height="0" style="position:absolute">${BV_DEFS}</svg>${bvCards(bld, c)}`}`;
 }
 // 펼친 반 요약 줄 (없으면 안내 한 줄)
 function bvFocusBar(bld) {
@@ -413,6 +415,92 @@ function bvCsv() {
   S.nodes.filter(n => bk(n) === bld && !isSlot(n)).forEach(n => rows.push([bvFloorUp(n, c) || '층 미지정', tlabel(n), n.no || '', n.name || '', effV(n), spec(n), n.kw || '', SRC[effSrc(n)], n.imp || '', par(n) ? label(par(n)) : '', pathOf(n).slice(0, -1).map(label).join(' › ')]));
   download(new Blob(['﻿' + rows.map(r => r.map(csvQ).join(',')).join('\r\n')], {type: 'text/csv'}), `${bld}_설비목록_${stamp()}.csv`);
 }
+/* ---------- 카드 보기 (기본): 왼쪽 TR별 배전반 카드 · 오른쪽 건물 단면 ---------- */
+// 배전반 아래 모든 반 (이 동 안, 여러 단계)
+function bvDesc(P, bld) { const o = []; const w = n => bvCh(n.id, bld).forEach(k => { o.push(k); w(k); }); w(P); return o; }
+const bvSrcOf = (n, bld) => { let x = par(n), g = 0; while (x && g++ < 80) { if (bk(x) !== bld) return x; x = par(x); } return null; };
+const bvMini = (n, w) => `<svg class="pic" viewBox="0 0 40 54" width="${w}" height="${Math.round(w * 1.35)}">${bvPic(n, 0, 0)}</svg>`;
+const bvFlTxt = f => f || '층 미지정';
+const bvFlSort = (a, b) => (a === '' ? 1 : 0) - (b === '' ? 1 : 0) || bvLv(b) - bvLv(a);
+function bvRowH(n, bld, c) {
+  const D = bvDesc(n, bld), d = bvLoads(n, bld), K = bvKind(n), v = (n.type === 'TR' ? n.v2 : '') || effV(n) || '전압?', open = BV.f === n.id;
+  const can = D.length || d.L.length || d.out.length;
+  const cnt = {}; D.forEach(x => { const k = bvKind(x).l; cnt[k] = (cnt[k] || 0) + 1; });
+  const fc = {}; D.forEach(x => { const f = bvFloorOf(x, c); fc[f] = (fc[f] || 0) + 1; });
+  const sum = [...Object.entries(cnt).map(([k, m]) => `${esc(k)} <b>${m}</b>`), d.L.length ? `부하 <b>${d.L.length}</b>` : '', d.out.length ? `다른 동 <b>${d.out.length}</b>` : ''].filter(Boolean).join(' · ');
+  const fl = Object.keys(fc).sort(bvFlSort).map(f => `<i>${esc(bvFlTxt(f))} ${fc[f]}</i>`).join('');
+  return `<div class="bvR${open ? ' on' : ''}" data-bvx="${esc(n.id)}" title="${can ? (open ? '접기' : '누르면 층별 목록') : '누르면 배전반/분전반/MCC반 도면'}">
+      ${bvMini(n, 30)}<div class="t"><b>${esc(label(n))}</b><span><em style="color:${K.c}">${esc(K.l)}</em> · <em style="color:${BV_VC(v)}">${esc(v)}</em>${bvInfo(n) ? ' · ' + esc(bvInfo(n)) : ''}</span></div>
+      <div class="s">${sum || '<span class="mu">하위 없음</span>'}<div class="fl">${fl}</div></div><span class="ar">${can ? (open ? '▾' : '▸') : '›'}</span></div>
+    ${open ? bvOpenH(n, bld, c, D, d) : ''}`;
+}
+// 펼친 배전반: 층별로 하위 반 · 바로 나가는 부하
+function bvOpenH(F, bld, c, D, d) {
+  const by = {}; D.forEach(x => { const f = bvFloorOf(x, c); (by[f] = by[f] || []).push(x); });
+  const it = x => { const p = bvBoxPar(x), up = p && p.id !== F.id ? `<small class="up">← ${esc(label(p))}</small>` : '';
+    return `<button class="bvI" data-bvp="${esc(x.id)}" title="${esc(pathOf(x).map(label).join(' › '))}\n누르면 배전반/분전반/MCC반 도면">${bvMini(x, 15)}<b>${esc(label(x))}</b><small>${esc(bvInfo(x))}</small>${up}</button>`; };
+  const ch = [...d.out.map(x => `<button class="bvI out" data-bvc="${esc(x.id)}" title="누르면 ${esc(bk(x))} 안 보기">↗ ${esc(bk(x))} · ${esc(label(x))}</button>`),
+    ...d.L.slice(0, 40).map(x => `<button class="bvI ld" data-bvc="${esc(x.id)}" title="누르면 부하도면">◆ ${esc(label(x))}</button>`), d.L.length > 40 ? `<button class="bvI" data-bvc="@more">+${d.L.length - 40}개 더 · 회로도</button>` : ''].join('');
+  return `<div class="bvOp"><div class="act"><button data-bvj="plan">📍 도면 위치</button><button data-bvj="load">📄 부하도면</button><button data-bvj="dg">▦ 회로도</button>${d.sp ? `<span class="mu">SPARE ${d.sp}</span>` : ''}</div>
+    ${Object.keys(by).sort(bvFlSort).map(f => `<div class="fr"><em class="${f ? '' : 'un'}">${esc(bvFlTxt(f))}</em><div class="its">${by[f].sort((a, b) => label(a).localeCompare(label(b))).map(it).join('')}</div></div>`).join('')}
+    ${ch ? `<div class="fr"><em class="ld">부하</em><div class="its">${ch}</div></div>` : ''}</div>`;
+}
+// 건물 단면: 층마다 숫자 · 펼친 배전반이 가는 층은 노랗게 · 수전 화살표
+function bvSecSvg(bld, c, hot, ent) {
+  const F = c.floors.slice().sort((a, b) => bvLv(b) - bvLv(a)), P = bvPanels(bld), un = P.filter(n => !bvFloorOf(n, c));
+  const W = 270, X0 = 46, BW = 200, FH = 46, RT = 18, hc = {}; hot.forEach(n => { const f = bvFloorOf(n, c); hc[f] = (hc[f] || 0) + 1; });
+  const H = RT + F.length * FH + (un.length ? 44 : 10);
+  const eF = new Set(ent.map(n => bvFloorOf(n, c)));
+  const o = [`<svg viewBox="0 0 ${W} ${H}" font-family="Malgun Gothic,sans-serif"><path d="M${X0 - 6} ${RT} L${X0 + 20} 4 H${X0 + BW - 20} L${X0 + BW + 6} ${RT}Z" fill="#cbd5e1" stroke="#64748b"/>`];
+  F.forEach((f, i) => {
+    const y = RT + i * FH, L = P.filter(n => bvFloorOf(n, c) === f), k = t => L.filter(n => n.type === t).length, h = hc[f];
+    const txt = [['TR', 'TR'], ['MDB', '배전'], ['MCC', 'MCC'], ['UPS', 'UPS'], ['PNL', '분전']].filter(([t]) => k(t)).map(([t, l]) => `${l} ${k(t)}`).join(' · ') || '—';
+    o.push(`<g class="bvFl${h ? ' hot' : ''}" data-bvfl="${esc(f)}" style="cursor:pointer"><title>${esc(f)} 반 목록 보기</title>
+      <rect x="${X0}" y="${y}" width="${BW}" height="${FH}" fill="${h ? '#fef3c7' : i % 2 ? '#f1f5f9' : '#f8fafc'}" stroke="${h ? '#f59e0b' : '#94a3b8'}" stroke-width="${h ? 2.5 : 1.2}"/>
+      ${[0, 1, 2, 3, 4, 5].map(j => `<rect x="${X0 + 10 + j * 31}" y="${y + 6}" width="20" height="7" rx="1" fill="${h ? '#fde68a' : '#dbe3ee'}"/>`).join('')}
+      <text x="${X0 - 8}" y="${y + 29}" text-anchor="end" font-size="15" font-weight="bold" fill="#262f7d">${esc(f)}</text>
+      <text x="${X0 + 10}" y="${y + 34}" font-size="11.5" fill="#334155">${esc(txt)}</text>
+      ${h ? `<text x="${X0 + BW - 8}" y="${y + 34}" text-anchor="end" font-size="13" font-weight="bold" fill="#b45309">▶ ${h}면</text>` : ''}
+      ${eF.has(f) ? `<path d="M2 ${y + 23}H${X0 - 30}" stroke="#ea580c" stroke-width="3"/><path d="M${X0 - 32} ${y + 18}l6 5-6 5z" fill="#ea580c"/><text x="2" y="${y + 17}" font-size="9.5" font-weight="bold" fill="#ea580c">수전</text>` : ''}</g>`);
+  });
+  const gy = RT + F.length * FH;
+  o.push(`<path d="M${X0 - 14} ${gy}H${X0 + BW + 14}" stroke="#57534e" stroke-width="3"/>`);
+  if (un.length) { const h = hc[''];
+    o.push(`<g class="bvFl${h ? ' hot' : ''}" data-bvfl="" style="cursor:pointer"><title>층 미지정 반 목록</title><rect x="${X0}" y="${gy + 8}" width="${BW}" height="30" rx="4" fill="${h ? '#fef3c7' : '#fff7ed'}" stroke="${h ? '#f59e0b' : '#fdba74'}" stroke-dasharray="4 3"/>
+      <text x="${X0 + 10}" y="${gy + 28}" font-size="11.5" fill="#9a3412">층 미지정 ${un.length}면</text>${h ? `<text x="${X0 + BW - 8}" y="${gy + 28}" text-anchor="end" font-size="13" font-weight="bold" fill="#b45309">▶ ${h}면</text>` : ''}</g>`); }
+  o.push('</svg>');
+  return o.join('');
+}
+function bvCards(bld, c) {
+  bvIndex();
+  const P = bvPanels(bld), ent = P.filter(n => { const p = bvBoxPar(n); return !p || bk(p) !== bld; });
+  const F = BV.f && byId(BV.f) && BV_PT[byId(BV.f).type] && bk(byId(BV.f)) === bld ? byId(BV.f) : null;
+  const hot = F ? bvDesc(F, bld) : [];
+  const src = n => { const s = bvSrcOf(n, bld); return s ? `← ${esc(bk(s) === '유틸리티동' ? '유틸' : bk(s))} ${esc(label(s))}${inV(n) ? ' · ' + esc(inV(n)) : ''}` : '← 수전'; };
+  const cards = ent.filter(n => n.type === 'TR').map(t => {
+    const rows = bvCh(t.id, bld), d = bvLoads(t, bld), fl = bvFloorOf(t, c);
+    return `<div class="bvCard"><div class="bvCh">${bvMini(t, 26)}<b>${esc(label(t))}</b><span>${esc(t.v2 || '')}${t.kva ? ' · ' + esc(t.kva) + 'kVA' : ''}</span><span class="src">${src(t)}</span><span class="sp"></span>${fl ? `<span class="flb">${esc(fl)}</span>` : ''}</div>
+      ${rows.map(n => bvRowH(n, bld, c)).join('')}
+      ${d.L.length + d.out.length ? `<div class="bvR x"><div class="t"><span class="mu">TR에서 바로: ${[...d.out.map(x => '↗ ' + esc(bk(x)) + ' ' + esc(label(x))), ...d.L.map(x => '◆ ' + esc(label(x)))].slice(0, 6).join(' · ')}</span></div></div>` : ''}
+      ${rows.length + d.L.length + d.out.length ? '' : '<div class="bvR x"><span class="mu">아래 배전반이 아직 없어요 (조사 중)</span></div>'}</div>`;
+  });
+  const oth = ent.filter(n => n.type !== 'TR');
+  if (oth.length) cards.push(`<div class="bvCard"><div class="bvCh"><b>다른 동에서 바로 받는 반</b><span class="mu">${oth.length}면</span></div>
+    ${oth.map(n => `<div class="srcL">${src(n)}</div>${bvRowH(n, bld, c)}`).join('')}</div>`);
+  const hint = F ? '' : `<div class="bvFo hint">👆 <b>배전반</b>을 누르면 층별 분전반 목록이 펼쳐지고 오른쪽 건물에 그 층이 표시돼요 · 오른쪽 <b>층</b>을 누르면 그 층 반 목록${UIX.edit ? ' · 층 정하기는 [▦ 층 배치]에서 끌어서' : ''}</div>`;
+  return `${hint}<div class="bvD"><div class="bvCards">${cards.join('') || '<div class="bvCard"><div class="bvR x"><span class="mu">이 동에 들어오는 반이 아직 없어요. 계통 트리에 TR·배전반을 넣으면 여기에 나와요.</span></div></div>'}</div>
+    <div class="bvSec"><div class="bvSecT">${F ? `<b>${esc(label(F))}</b> 이(가) 가는 층` : '층별 반 수'}</div>${bvSecSvg(bld, c, hot, ent)}</div></div>`;
+}
+// 층을 누르면: 그 층 반 목록 (어느 배전반에서 오는지)
+function bvFloorList(f) {
+  const bld = mapBldOf(BV.b), c = bvCfg(bld);
+  const A = bvPanels(bld).filter(n => bvFloorOf(n, c) === f).sort((a, b) => BV_ORD[a.type] - BV_ORD[b.type] || label(a).localeCompare(label(b)));
+  const top = n => { let x = bvBoxPar(n), last = null, g = 0; while (x && bk(x) === bld && g++ < 40) { if (x.type === 'MDB') last = x; x = bvBoxPar(x); } return last; };
+  uiModal(`<h3>${esc(mapName(MAP_BLD.find(x => x.id === BV.b)))} · ${esc(bvFlTxt(f))} · ${A.length}면</h3><div class="mdlS"><table class="tb"><thead><tr><th></th><th>종류</th><th>명칭</th><th>전압</th><th>받는 배전반</th><th>바로 위</th></tr></thead><tbody>
+    ${A.map(n => { const t = top(n), p = bvBoxPar(n); return `<tr class="c" data-bvp="${esc(n.id)}"><td>${bvMini(n, 14)}</td><td>${esc(bvKind(n).l)}</td><td>${esc(label(n))}</td><td>${esc(effV(n))}</td><td>${t ? esc(label(t)) : ''}</td><td>${p && (!t || p.id !== t.id) ? esc(label(p)) : ''}</td></tr>`; }).join('')}
+    </tbody></table></div><div class="mdlA"><button data-mdl="x">닫기</button></div>`, true);
+}
+
 /* ---------- 이벤트 ---------- */
 let BV_LC = {id: '', t: 0};
 const bvPt = e => { const sv = document.getElementById('bvSvg'), p = sv.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; return p.matrixTransform(sv.getScreenCTM().inverse()); };
@@ -433,6 +521,7 @@ document.addEventListener('click', e => {
     const v = a.dataset.bva, bld = mapBldOf(BV.b), c = bvCfg(bld);
     if (v === 'back') { MAP.selB = BV.b; BV.b = ''; BV.f = ''; }
     else if (v === 'unf') BV.f = '';
+    else if (v === 'card' || v === 'band') { BV.mode = v; try { localStorage.setItem('ckd_elec2_bvmode', v); } catch (e) {} }
     else if (v === 'csv') { bvCsv(); return; }
     else if (v === 'tidy') { bvTidy(bld, c); save(); }
     else if (v === 'reset') { if (!confirm('끌어서 옮긴 위치를 지우고 자동 배치로 돌릴까요? (층은 그대로)')) return; Object.values(c.pos).forEach(p => { delete p.x; delete p.y; }); save(); }
@@ -445,13 +534,19 @@ document.addEventListener('click', e => {
   const fo = t.closest('[data-bvfo]'); if (fo) { BV.f = fo.dataset.bvfo; renderView(); return; }
   const j = t.closest('[data-bvj]'); if (j && BV.f) { bvGo(j.dataset.bvj, BV.f); return; }
   const bld = mapBldOf(BV.b);
+  // 카드 보기: 배전반 줄 = 펼치기/접기 (하위 없으면 도면) · 목록 항목 = 도면 · 단면 층 = 그 층 목록
+  const rx = t.closest('[data-bvx]');
+  if (rx) { const x = byId(rx.dataset.bvx); if (!x) return;
+    if (bvDesc(x, bld).length || bvCanOpen(x, bld)) { BV.f = BV.f === x.id ? '' : x.id; renderView(); } else bvGo('plan', x.id); return; }
+  const rp = t.closest('[data-bvp]'); if (rp) { uiModalClose(); bvGo('plan', rp.dataset.bvp); return; }
+  const rf = t.closest('[data-bvfl]'); if (rf) { bvFloorList(rf.dataset.bvfl); return; }
   // 반 박스: 하위가 있으면 펼치기 (펼친 걸 한 번 더 = 도면), 없으면 바로 배전반/분전반/MCC반 도면
   const n = t.closest('#bvSvg .bvN, #bvSvg .bvP');
   if (n) { const x = byId(n.dataset.bvn); if (!x) return;
     if (!UIX.edit && BV.f !== x.id && bvCanOpen(x, bld)) { BV.f = x.id; renderView(); return; }
     bvGo('plan', x.id); return; }
   // 부하 칩: 부하도면 · 다른 동 칩: 그 동 안 보기
-  const cp = t.closest('#bvSvg .bvC');
+  const cp = t.closest('#bvSvg .bvC, .bvOp [data-bvc]');
   if (cp) { const id = cp.dataset.bvc;
     if (id === '@more') { bvGo('dg', BV.f); return; }
     const x = byId(id); if (!x) return;
@@ -503,8 +598,30 @@ body:not(.ro) #bvW svg{touch-action:none}#bvW .bvN:hover rect:first-child{stroke
 #bvW .bvL.fl{stroke-width:3;stroke-dasharray:9 5;animation:bvFl 1s linear infinite}@keyframes bvFl{to{stroke-dashoffset:-14}}
 #bvW .bvC:hover rect{stroke-width:2.6}
 #view .bvFo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:5px 10px;margin-bottom:6px;font-size:12.5px}
-#view .bvFo.hint{background:#f8fafc;border-color:#e2e8f0;color:#475569}
+#view .bvFo.hint{display:block;background:#f8fafc;border-color:#e2e8f0;color:#475569}
 #view .bvFo .cr a{color:#262f7d;cursor:pointer;text-decoration:underline dotted}#view .bvFo .cr b{color:#b45309;font-size:14px}#view .bvFo .sm{color:#475569}#view .bvFo .sm b{color:#262f7d}
+#view .bvMd{display:inline-flex;border:1px solid #c7d2fe;border-radius:7px;overflow:hidden}#view .bvMd button{border:0;border-radius:0;background:#fff;color:#475569}#view .bvMd button.on{background:#262f7d;color:#fff}
+#view .bvD{display:flex;gap:12px;align-items:flex-start}
+#view .bvCards{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+#view .bvCard{border:1.5px solid #cbd5e1;border-radius:10px;background:#fff;overflow:hidden}
+#view .bvCh{display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fff7ed;border-bottom:1px solid #fed7aa;font-size:12.5px;color:#7c2d12}#view .bvCh b{font-size:15px;color:#9a3412}#view .bvCh .src{color:#c2410c}#view .bvCh .sp{flex:1}
+#view .bvCh .flb,#view .bvR .fl i{display:inline-block;background:#e0e7ff;color:#262f7d;border-radius:9px;padding:0 7px;font-size:11px;font-style:normal;font-weight:700;margin:2px 3px 0 0}
+#view .srcL{font-size:11.5px;color:#c2410c;padding:4px 12px 0}
+#view .bvR{display:flex;align-items:center;gap:10px;padding:7px 12px;border-top:1px solid #eef2f7;cursor:pointer}#view .bvR:hover{background:#f8fafc}#view .bvR.on{background:#fffbeb;box-shadow:inset 4px 0 #f59e0b}#view .bvR.x{cursor:default}
+#view .bvR .pic{flex:none}#view .bvR .t{width:190px;flex:none;display:flex;flex-direction:column;font-size:11.5px;color:#64748b}#view .bvR .t b{font-size:14px;color:#0f172a}#view .bvR .t em{font-style:normal;font-weight:700}
+#view .bvR .s{flex:1;font-size:12px;color:#475569}#view .bvR .s b{color:#262f7d}#view .bvR .ar{color:#94a3b8;font-size:14px;font-weight:700}#view .bvR.on .ar{color:#f59e0b}
+#view .mu{color:#94a3b8;font-size:12px}
+#view .bvOp{background:#fffdf5;border-top:1px dashed #fcd34d;padding:6px 12px 10px 52px}
+#view .bvOp .act{display:flex;gap:6px;align-items:center;margin-bottom:4px}#view .bvOp .act button{padding:3px 9px;border:1px solid #d6dbe8;background:#fff;border-radius:6px;font-size:12px;cursor:pointer}
+#view .bvOp .fr{display:flex;gap:8px;align-items:flex-start;padding:4px 0;border-top:1px solid #f1f5f9}
+#view .bvOp .fr>em{flex:none;width:58px;font-style:normal;font-weight:800;color:#fff;background:#262f7d;border-radius:5px;text-align:center;font-size:12px;padding:3px 0;margin-top:2px}#view .bvOp .fr>em.un{background:#f59e0b}#view .bvOp .fr>em.ld{background:#15803d}
+#view .bvOp .its{display:flex;flex-wrap:wrap;gap:5px}
+#view .bvOp .its .bvI{width:auto;flex:0 0 auto;margin:0}#view .bvI{display:inline-flex;align-items:center;gap:5px;padding:3px 9px 3px 5px;border:1px solid #cbd5e1;background:#fff;border-radius:16px;font-size:12px;cursor:pointer}#view .bvI:hover{border-color:#262f7d;background:#eef2ff}
+#view .bvI small{color:#94a3b8}#view .bvI small.up{color:#7c3aed}#view .bvI.ld{color:#15803d;border-color:#86efac;background:#f0fdf4}#view .bvI.out{color:#0e7490;border-color:#67e8f9;background:#ecfeff}
+#view .bvSec{width:290px;flex:none;position:sticky;top:0;border:1.5px solid #cbd5e1;border-radius:10px;background:#fff;padding:8px}#view .bvSec svg{display:block;width:100%;height:auto}
+#view .bvSecT{font-size:12.5px;color:#475569;margin-bottom:4px}#view .bvSecT b{color:#b45309}
+#view .bvFl:hover rect:first-of-type{stroke:#262f7d;stroke-width:2}
+body.mob #view .bvCh{flex-wrap:wrap}#view .bvCh b,#view .bvCh span{white-space:nowrap}body.mob #view .bvS.pa,body.mob #view .bvR .ar{display:none}body.mob #view .bvD{flex-direction:column-reverse}body.mob #view .bvSec{width:auto;position:static}body.mob #view .bvR .t{width:auto;flex:1}body.mob #view .bvR{flex-wrap:wrap}body.mob #view .bvR .s{flex-basis:100%;padding-left:40px}body.mob #view .bvR.on+.bvOp{padding-left:12px}
 #view .bvFo .sp{flex:1}#view .bvFo button{padding:4px 10px;border:1px solid #d6dbe8;background:#fff;border-radius:6px;font-size:12px;cursor:pointer}
 #view .bvSum{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 #view .bvS{display:inline-flex;align-items:baseline;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:4px 10px;font-size:12.5px}
