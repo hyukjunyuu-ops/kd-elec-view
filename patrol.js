@@ -39,14 +39,16 @@ const ptTodayOf = rid => ptAll().filter(r => r.room === rid && r.d === ptToday()
 const ptPrevOf = rid => ptAll().filter(r => r.room === rid && r.d < ptToday()).pop();
 
 /* ---------- 이상 판정 ---------- */
+// 고압 반(3.3kV 등)은 계기에 kV로 나오니 100 미만이면 kV로 보고 V로 바꿈
+const ptVolt = (v, nv) => { const x = +v; return nv >= 1000 && x > 0 && x < 100 ? x * 1000 : x; };
 function ptCheck(r, c, prev) {
   const L = c.lim, bad = [];
   (c.items || []).forEach(k => { if ((r.items || {})[k] === 'bad') bad.push(`${k} 이상`); });
   if (r.t !== '' && r.t != null && +r.t >= L.tHi) bad.push(`온도 ${r.t}℃`);
   if (r.h !== '' && r.h != null && +r.h >= L.hHi) bad.push(`습도 ${r.h}%`);
   (r.P || []).forEach(p => {
-    const nv = parseFloat(p.nv) || 0;
-    if (p.V !== '' && nv && Math.abs(+p.V - nv) / nv * 100 > L.vTol) bad.push(`${p.n} 전압 ${p.V}V`);
+    const nv = pV(p.nv), vv = ptVolt(p.V, nv);
+    if (p.V !== '' && nv && Math.abs(vv - nv) / nv * 100 > L.vTol) bad.push(`${p.n} 전압 ${p.V}${nv >= 1000 && +p.V < 100 ? 'kV' : 'V'}`);
     if (p.PF !== '' && +p.PF > 0 && +p.PF < L.pfLo) bad.push(`${p.n} 역률 ${p.PF}`);
     const q = prev && (prev.P || []).find(x => x.n === p.n);
     if (q && q.A > 0 && p.A !== '' && Math.abs(+p.A - q.A) / q.A * 100 >= L.aJump) bad.push(`${p.n} 전류 ${q.A}→${p.A}A`);
@@ -56,7 +58,7 @@ function ptCheck(r, c, prev) {
 const ptFieldBad = (k, v, c, p, prev) => {
   if (v === '' || v == null) return false; const L = c.lim;
   if (k === 't') return +v >= L.tHi; if (k === 'h') return +v >= L.hHi;
-  if (k === 'V') { const nv = parseFloat(p.nv) || 0; return nv && Math.abs(+v - nv) / nv * 100 > L.vTol; }
+  if (k === 'V') { const nv = pV(p.nv); return nv && Math.abs(ptVolt(v, nv) - nv) / nv * 100 > L.vTol; }
   if (k === 'PF') return +v > 0 && +v < L.pfLo;
   if (k === 'A') { const q = prev && (prev.P || []).find(x => x.n === p.n); return q && q.A > 0 && Math.abs(+v - q.A) / q.A * 100 >= L.aJump; }
   return false;
@@ -115,7 +117,7 @@ function ptRoomH(rid) {
     <div class="ptS"><div class="ptSh"><b>외관 점검</b><span class="mu">기본 정상 · 이상만 누르세요</span></div>${(c.items || []).map(it).join('')}</div>
     <div class="ptS"><div class="ptSh"><b>실내 환경</b>${prev ? `<span class="mu">어제 ${prev.t ?? '-'}℃ · ${prev.h ?? '-'}%</span>` : ''}</div><div class="ptG">${num('t', cur.t, prev ? prev.t : '', null, '℃')}${num('h', cur.h, prev ? prev.h : '', null, '%')}</div></div>
     ${cur.P.map(p => `<div class="ptS"><div class="ptSh"><b>${esc(p.n)}</b><span class="mu">${esc(p.nv || '')}${prev ? ' · 회색 = 어제' : ''}</span></div>
-      <div class="ptG">${num('V', p.V, pv(p, 'V'), p, 'V')}${num('A', p.A, pv(p, 'A'), p, 'A')}${num('kW', p.kW, pv(p, 'kW'), p, 'kW')}${num('PF', p.PF, pv(p, 'PF'), p, '')}</div></div>`).join('')
+      <div class="ptG">${num('V', p.V, pv(p, 'V'), p, pV(p.nv) >= 1000 ? 'kV' : 'V')}${num('A', p.A, pv(p, 'A'), p, 'A')}${num('kW', p.kW, pv(p, 'kW'), p, 'kW')}${num('PF', p.PF, pv(p, 'PF'), p, '')}</div></div>`).join('')
       || '<div class="ptS mu">이 전기실은 계측할 배전반이 아직 없어요 (PC 순찰 설정에서 추가).</div>'}
     <div class="ptS"><textarea data-ptk="memo" rows="2" placeholder="메모 (선택)">${esc(cur.memo || '')}</textarea></div>
     ${bad.length ? `<div class="ptBad">⚠ ${bad.map(esc).join(' · ')}</div>` : ''}
@@ -176,13 +178,15 @@ function ptCsv() {
 }
 // 설정: 전기실마다 배전반 고르기 · 항목 · 기준값 · 시트 · QR
 function ptSetH(c) {
-  const L = c.lim, cand = S.nodes.filter(n => (['MDB', 'MCC', 'PNL', 'UPS'].includes(n.type) || (n.type === 'CB' && n.cbk === 'ACB')) && !isSlot(n));
+  const L = c.lim, cand = S.nodes.filter(n => (['MDB', 'MCC', 'UPS'].includes(n.type) || (n.type === 'CB' && (n.cbk === 'ACB' || n.cbk === 'VCB'))) && !isSlot(n));   // 계측기 있는 큐비클: VCB·ACB·배전반·MCC·UPS
   const room = rm => `<div class="ptRm"><div class="h"><input data-ptrn="${esc(rm.id)}" value="${esc(rm.name)}"><span class="mu">${(rm.panels || []).length}개</span></div>
     <ol>${(rm.panels || []).map((p, j) => `<li><b>${esc(p.n)}</b> <span class="mu">${esc(p.v || '')}</span><span class="sp"></span><button data-ptmv="${esc(rm.id)}|${j}|-1">▲</button><button data-ptmv="${esc(rm.id)}|${j}|1">▼</button><button data-ptdel="${esc(rm.id)}|${j}">✕</button></li>`).join('')}</ol>
     <div class="ad"><select data-ptadd="${esc(rm.id)}">${(() => { const B = ptRmBld(rm), L = cand.filter(n => ptSameBld(bk(n), B) && !(rm.panels || []).some(p => p.nid === n.id))
         .sort((a, b) => ptOrd(a) - ptOrd(b) || label(a).localeCompare(label(b), 'ko', {numeric: true}));
-      return `<option value="">+ 배전반 추가 (${esc(B || '동 모름')} · ${L.length}개)</option>` + (L.length ? L.map(n => `<option value="${esc(n.id)}">${esc(tlabel(n))} · ${esc(label(n))}${effV(n) ? ' · ' + esc(effV(n)) : ''}</option>`).join('') : '<option value="" disabled>이 동에 반이 아직 없어요 → [+ 직접 입력]</option>'); })()}</select>
-      <button data-ptfree="${esc(rm.id)}" title="트리에 없는 반 이름 직접">+ 직접 입력</button></div></div>`;
+      return `<option value="">+ 추가: VCB·ACB·배전반·MCC (${esc(B || '동 모름')} · ${L.length}개)</option>` + (L.length ? L.map(n => `<option value="${esc(n.id)}">${esc(n.type === 'CB' && n.cbk ? n.cbk : tlabel(n))} · ${esc(label(n))}${effV(n) ? ' · ' + esc(effV(n)) : ''}</option>`).join('') : '<option value="" disabled>이 동에 반이 아직 없어요 → [+ 직접 입력]</option>'); })()}</select>
+      <button data-ptfree="${esc(rm.id)}" title="트리에 없는 반 이름 직접">+ 직접 입력</button></div>
+    ${(() => { const sl = byId(UI.sel), has = sl && (rm.panels || []).some(p => p.nid === sl.id);
+      return `<button class="ptTr" data-ptsel="${esc(rm.id)}"${sl && !has ? '' : ' disabled'} title="왼쪽 계통 트리에서 항목을 누른 뒤">🌲 트리에서 고른 것 넣기${sl ? ` · <b>${esc(label(sl))}</b>${has ? ' (이미 있음)' : ''}` : ' (트리에서 먼저 고르세요)'}</button>`; })()}</div>`;
   return `<div class="ptSet">
     <div class="ptBox"><h3>① 전기실 · 계측할 배전반 <span class="mu">(QR 하나 = 전기실 하나)</span></h3><div class="ptRms">${c.rooms.map(room).join('')}</div>
       <button data-pta="addroom">+ 전기실 추가</button></div>
@@ -205,7 +209,7 @@ function ptRmBld(rm) {
   return b;
 }
 const ptSameBld = (a, b) => !!a && !!b && (a === b || (a.slice(0, 2) === b.slice(0, 2) && /동$/.test(a) && /동$/.test(b)));
-const ptOrd = n => n.type === 'CB' ? 0 : n.type === 'MDB' ? 1 : n.type === 'MCC' ? 2 : n.type === 'UPS' ? 3 : 4;   // ACB → 배전반 → MCC → UPS → 분전반
+const ptOrd = n => n.type === 'CB' ? (n.cbk === 'VCB' ? 0 : 1) : n.type === 'MDB' ? 2 : n.type === 'MCC' ? 3 : n.type === 'UPS' ? 4 : 5;   // VCB → ACB → 배전반 → MCC → UPS
 const ptBase = () => location.href.split(/[?#]/)[0];
 function ptQrSvg(text, px) {
   if (typeof qrcode !== 'function') return '';
@@ -303,6 +307,7 @@ document.addEventListener('click', async e => {
   const c = ptCfg();
   if ((b = t.closest('[data-ptmv]'))) { const [rid, j, d] = b.dataset.ptmv.split('|'), rm = c.rooms.find(x => x.id === rid), P = rm.panels, k = +j + +d; if (k < 0 || k >= P.length) return; [P[j], P[k]] = [P[k], P[j]]; ptCfgSave(); return renderView(); }
   if ((b = t.closest('[data-ptdel]'))) { const [rid, j] = b.dataset.ptdel.split('|'), rm = c.rooms.find(x => x.id === rid); rm.panels.splice(+j, 1); ptCfgSave(); return renderView(); }
+  if ((b = t.closest('[data-ptsel]'))) { const n = byId(UI.sel), rm = c.rooms.find(x => x.id === b.dataset.ptsel); if (!n || !rm) return; rm.panels = rm.panels || []; if (!rm.panels.some(p => p.nid === n.id)) rm.panels.push({nid: n.id, n: label(n), v: effV(n) || ''}); ptCfgSave(); return renderView(); }
   if ((b = t.closest('[data-ptfree]'))) { const nm = (prompt('배전반 이름 (예: LV-B2-A)') || '').trim(); if (!nm) return; const v = (prompt('전압 (예: 380V)', '380V') || '').trim(); c.rooms.find(x => x.id === b.dataset.ptfree).panels.push({n: nm, v}); ptCfgSave(); return renderView(); }
   if (!(b = t.closest('[data-pta]'))) return;
   const a = b.dataset.pta;
@@ -425,7 +430,7 @@ body.ptOnly #mbNav button:not([data-mv="patrol"]),body.ptOnly #bldBar,body.ptOnl
 #view .ptRms{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:8px}
 #view .ptRm{border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;background:#f8fafc}#view .ptRm .h{display:flex;gap:6px;align-items:center}#view .ptRm .h input{flex:1;font-weight:700;border:1px solid transparent;background:transparent;font-size:14px;padding:3px}#view .ptRm .h input:hover,#view .ptRm .h input:focus{border-color:#cbd5e1;background:#fff}
 #view .ptRm ol{margin:6px 0;padding-left:20px;font-size:12.5px}#view .ptRm li{display:flex;align-items:center;gap:4px;padding:2px 0}#view .ptRm li .sp{flex:1}#view .ptRm li button{border:1px solid #e2e8f0;background:#fff;border-radius:4px;font-size:10px;padding:1px 5px;cursor:pointer}
-#view .ptRm .ad{display:flex;gap:4px}#view .ptRm .ad select{flex:1;min-width:0;font-size:12px}#view .ptRm .ad button,#view .ptBox>button,#view .ptBt button{padding:5px 10px;border:1px solid #d6dbe8;background:#fff;border-radius:6px;cursor:pointer;font-size:12.5px}
+#view .ptRm .ad{display:flex;gap:4px}#view .ptRm .ptTr{width:100%;margin-top:5px;padding:5px 8px;border:1px dashed #94a3b8;background:#fff;border-radius:6px;font-size:12px;cursor:pointer;text-align:left}#view .ptRm .ptTr:disabled{opacity:.55;cursor:default}#view .ptRm .ptTr b{color:#273382}#view .ptRm .ad select{flex:1;min-width:0;font-size:12px}#view .ptRm .ad button,#view .ptBox>button,#view .ptBt button{padding:5px 10px;border:1px solid #d6dbe8;background:#fff;border-radius:6px;cursor:pointer;font-size:12.5px}
 #view .ptBt{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}#view .ptBt .pri{background:#262f7d;color:#fff;border-color:#262f7d}
 #view .ptBox textarea{width:100%;box-sizing:border-box;font-family:inherit;font-size:13px}#view .ptLim{display:flex;flex-wrap:wrap;gap:12px;font-size:13px}#view .ptLim input{width:60px;padding:4px}
 .ptGas li{margin:4px 0;font-size:13px}.ptGas code{background:#f1f5f9;padding:1px 5px;border-radius:4px}`;
