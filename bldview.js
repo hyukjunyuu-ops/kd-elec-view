@@ -355,7 +355,8 @@ function bvTidy(bld, c) {
 function bvGo(k, id) {
   const n = byId(id); if (!n) return;
   if (k === 'dg') { UI.tab = 'dg'; S.cfg.pvMode = 'pv'; }
-  else { UI.tab = 'plan'; PL.lastSel = null; if (k === 'load' && BV_PT[n.type]) { PL.cur = plZK(id, 1); PL.keep = true; } }
+  else if (k === 'load') { UI.tab = 'zone'; ZO.last = null; if (BV_PT[n.type]) { PL.cur = plZK(id, 1); PL.keep = true; ZO.last = id; } }
+  else { UI.tab = 'plan'; PL.lastSel = null; }
   saveUI(); select(id, true);
 }
 

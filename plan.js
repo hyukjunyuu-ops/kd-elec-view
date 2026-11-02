@@ -225,7 +225,7 @@ function plAct(a,P,sel){
 document.addEventListener('click',e=>{const t=e.target;if(!t.closest||!/^(plan|zone)$/.test(UI.tab)||!t.closest('#view'))return;
   const P=plParse(PL.cur),sel=byId(UI.sel),go=()=>{plKeep();renderView();};let b;
   if(b=t.closest('[data-plf]')){PL.cur=plFK(b.dataset.plf);PL.place=null;PL.tool='';PL.keep=true;return go();}
-  if(b=t.closest('[data-plz]')){PL.cur=plZK(b.dataset.plz,1);PL.place=null;PL.tool='';PL.keep=true;return go();}
+  if(b=t.closest('[data-plz]')){PL.cur=plZK(b.dataset.plz,1);PL.place=null;PL.tool='';PL.keep=true;UI.tab='zone';if(typeof ZO!=='undefined')ZO.last=UI.sel;saveUI();return go();}
   if(b=t.closest('[data-plcx]')){PL.place=null;PL.tool='';return go();}
   if(b=t.closest('[data-pls]')){PL.cur=plZK(P.id,+b.dataset.pls);PL.selIc='';PL.keep=true;return go();}
   if(b=t.closest('[data-plv]')){PL.vf=b.dataset.plv;return go();}

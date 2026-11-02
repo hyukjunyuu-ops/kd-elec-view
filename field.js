@@ -178,8 +178,8 @@ document.addEventListener('click', e => {
     snap('회로 추가'); const k = {id: uid(), pid: P.id, type: 'LOAD', no: String(mx + 1), name: ''}; S.nodes.push(k); FDS.nw = k.id; save(); dirty(); return fdOpen(k.id); }
   if (a === 'dg') { UI.tab = 'dg'; S.cfg.pvMode = 'pv'; saveUI(); select(P.id, true); return mbSet('main'); }
   if (a === 'loc' || a === 'zone' || a === 'put') {
-    UI.tab = 'plan'; PL.lastSel = null;
-    if (a === 'zone') { PL.cur = plZK(P.id, 1); PL.keep = true; }
+    UI.tab = a === 'zone' ? 'zone' : 'plan'; PL.lastSel = null;
+    if (a === 'zone') { PL.cur = plZK(P.id, 1); PL.keep = true; ZO.last = P.id; }
     if (a === 'put') {   // 그 동·층 도면을 열고 누르면 바로 찍힘
       const c = bvCfg(bk(P)), f = fdFloorOf(P, c), F = S.floors.find(x => (x.bld === bk(P) || x.name.startsWith(bk(P))) && bvFL(x.name) === f);
       if (F) { PL.cur = plFK(F.name); PL.keep = true; }
