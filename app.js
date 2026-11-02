@@ -85,10 +85,11 @@ function dupTree(id){
 
 /* ---------- 가운데 화면 ---------- */
 function renderView(){
-  if(!['dg','plan','chk','map'].includes(UI.tab))UI.tab='sld'; // 전기 Flow = 수변전 단선도 (예전 손그림·동별 화면은 데이터만 보관)
+  if(!['dg','plan','zone','chk','map'].includes(UI.tab))UI.tab='sld'; // 전기 Flow = 수변전 단선도 (예전 손그림·동별 화면은 데이터만 보관)
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===UI.tab));
-  $('#view').innerHTML=UI.tab==='dg'?viewDg():UI.tab==='plan'?plView():UI.tab==='chk'?chkView():UI.tab==='map'?mapView():sdView();
+  $('#view').innerHTML=UI.tab==='dg'?viewDg():UI.tab==='plan'?plView():UI.tab==='zone'?zoneView():UI.tab==='chk'?chkView():UI.tab==='map'?mapView():sdView();
   if(UI.tab==='sld')sdAfter();
+  if(UI.tab==='plan'&&typeof ZO!=='undefined'){const P=plParse(PL.cur);if(P&&P.z){UI.tab='zone';ZO.last=UI.sel;saveUI();renderView();}}   // 부하도면은 부하도면 탭에서
 }
 function viewFlow(){
   const c={};S.nodes.forEach(n=>c[n.type]=(c[n.type]||0)+1);

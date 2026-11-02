@@ -65,6 +65,7 @@ const PL={cur:'',z:1,edit:false,tool:'',place:null,lastSel:null,keep:false,img:{
 try{const o=JSON.parse(localStorage.getItem('ckd_elec2_plan')||'{}');PL.cur=o.cur||'';PL.z=o.z||1;}catch(e){}
 function plKeep(){try{localStorage.setItem('ckd_elec2_plan',JSON.stringify({cur:PL.cur,z:PL.z}));}catch(e){}}
 const r2d=v=>Math.round(v*100)/100;
+const PL_ZMAX=20;   // 반마다 부하도면 장 수
 const PL_P=t=>t==='PNL'||t==='UPS'||t==='MDB'||t==='MCC';
 const plFK=f=>'F|'+f,plZK=(id,s)=>'Z|'+id+'|'+s;
 function plParse(k){const a=String(k||'').split('|');return a[0]==='Z'?{z:1,id:a[1],s:+a[2]||1}:a[0]==='F'?{f:a.slice(1).join('|')}:null;}
@@ -99,7 +100,7 @@ function plMigImg(){
         if(m){const sh=Math.min(3,+(m[2]||1));nk=plZK(m[1],sh);S.zones[m[1]]=Math.max(S.zones[m[1]]||1,sh);}
         else{nk=plFK(k);if(!S.floors.some(f=>f.name===k))S.floors.push({name:k,bld:S.blds.find(b=>k.startsWith(b))||''});}
         try{await Store.img.put(nk,v);PL.img[nk]=v;n++;}catch(e){}}
-      S.cfg.imgMig=1;save();if(n)toast(`기존 도면 이미지 ${n}장을 가져왔어요.`,false);if(UI.tab==='plan')renderView();};
+      S.cfg.imgMig=1;save();if(n)toast(`기존 도면 이미지 ${n}장을 가져왔어요.`,false);if(/^(plan|zone)$/.test(UI.tab))renderView();};
   };
 }
 
@@ -146,7 +147,7 @@ function plView(){
     if(sel&&PL_P(sel.type))h+=`<button data-plz="${esc(sel.id)}">📄 ${esc(sel.name||label(sel))} 부하도면 ›</button>`;}
   h+=`<span class="sp"></span><label class="plChk"><input type="checkbox" data-pla="lbl"${S.cfg.lbl===false?'':' checked'}> 이름표</label><label class="plChk">마커 <input type="range" min="6" max="28" value="${S.cfg.mks||13}" data-pla="mks"></label>`+
     `<span class="seg"><button data-pla="zo">－</button><button data-pla="z1">${Math.round(PL.z*100)}%</button><button data-pla="zi">＋</button></span><button data-pla="edit"${PL.edit?' class="on"':''}>✎ 배치 편집</button></div>`;
-  if(H){let sh='';for(let i=1;i<=zc;i++)sh+=`<button data-pls="${i}"${i===P.s?' class="on"':''}>도면 ${i}</button>`;if(zc&&zc<3)sh+=`<button data-pla="addS">+ 도면 추가</button>`;
+  if(H){let sh='';for(let i=1;i<=zc;i++)sh+=`<button data-pls="${i}"${i===P.s?' class="on"':''}>도면 ${i}</button>`;if(zc&&zc<PL_ZMAX)sh+=`<button data-pla="addS">+ 도면 추가</button>`;
     h+=`<div class="plBar"><span class="plCrumb">${plCrumb(H)}</span><span class="sp"></span>${sh}</div>`;}
   if(PL.edit&&P&&(!H||zc)){
     const hasM=sel&&(P.f?(sel.floor===P.f&&plOnF(sel)):sel.zp===P.id+'|'+P.s);
@@ -199,7 +200,7 @@ function plAct(a,P,sel){
   if(a==='unput'){if(!sel)return;if(P.f){if(sel.floor===P.f){sel.floor='';sel.x='';sel.y='';}}else{delete sel.zp;delete sel.zx;delete sel.zy;}save();return go();}
   if(a==='delIc')return plDelIc();
   if(a==='mkZ'){S.zones[P.id]=1;PL.cur=plZK(P.id,1);PL.keep=true;save();go();return plPickImg(PL.cur);}
-  if(a==='addS'){const c=S.zones[P.id]||0;if(c>=3)return alert('부하도면은 3장까지예요.');S.zones[P.id]=c+1;PL.cur=plZK(P.id,c+1);PL.keep=true;save();go();return plPickImg(PL.cur);}
+  if(a==='addS'){const c=S.zones[P.id]||0;if(c>=PL_ZMAX)return alert(`부하도면은 ${PL_ZMAX}장까지예요.`);S.zones[P.id]=c+1;PL.cur=plZK(P.id,c+1);PL.keep=true;save();go();return plPickImg(PL.cur);}
   if(a==='delS'){const c=S.zones[P.id]||0,s=P.s,zk=P.id+'|'+s,ni=S.icons.filter(i=>i.z===zk).length,nm=S.nodes.filter(n=>n.zp===zk).length;
     if(!confirm(`도면 ${s}을(를) 삭제할까요?\n이 장의 아이콘·범위 ${ni}개, 부하 마커 ${nm}개도 같이 지워져요.`))return;
     S.icons=S.icons.filter(i=>i.z!==zk);S.nodes.forEach(n=>{if(n.zp===zk){delete n.zp;delete n.zx;delete n.zy;}});
@@ -221,7 +222,7 @@ function plAct(a,P,sel){
 }
 
 /* ---------- 클릭 ---------- */
-document.addEventListener('click',e=>{const t=e.target;if(!t.closest||UI.tab!=='plan'||!t.closest('#view'))return;
+document.addEventListener('click',e=>{const t=e.target;if(!t.closest||!/^(plan|zone)$/.test(UI.tab)||!t.closest('#view'))return;
   const P=plParse(PL.cur),sel=byId(UI.sel),go=()=>{plKeep();renderView();};let b;
   if(b=t.closest('[data-plf]')){PL.cur=plFK(b.dataset.plf);PL.place=null;PL.tool='';PL.keep=true;return go();}
   if(b=t.closest('[data-plz]')){PL.cur=plZK(b.dataset.plz,1);PL.place=null;PL.tool='';PL.keep=true;return go();}
@@ -272,7 +273,7 @@ document.addEventListener('pointerup',()=>{if(!PD)return;const D=PD;PD=null;
   save();renderView();});
 
 /* ---------- 키보드 · 층 순서 끌기 ---------- */
-document.addEventListener('keydown',e=>{if(UI.tab!=='plan'||/INPUT|TEXTAREA|SELECT/.test((document.activeElement||{}).tagName||''))return;
+document.addEventListener('keydown',e=>{if(!/^(plan|zone)$/.test(UI.tab)||/INPUT|TEXTAREA|SELECT/.test((document.activeElement||{}).tagName||''))return;
   if(e.key==='Escape'&&(PL.place||PL.tool)){PL.place=null;PL.tool='';renderView();}
   else if(e.key==='Delete'&&PL.edit&&PL.selIc){e.preventDefault();plDelIc();}});
 const plDB=t=>t.closest&&t.closest('.plBar [data-plf][draggable]');
