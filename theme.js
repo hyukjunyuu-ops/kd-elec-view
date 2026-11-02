@@ -21,6 +21,8 @@ const TH_I = {
   field: '<path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 11h6M9 15h4"/>'
 };
 const thIc = (k, s) => `<svg width="${s || 20}" height="${s || 20}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${TH_I[k]}</svg>`;
+// 저장소에 넣은 회사 로고 파일 (넣으면 여기에 이름, 없으면 '')
+const TH_LOGO = 'logo.png';   // 종근당 심볼 (왼쪽 메뉴 맨 위) · logo-full.png = 글자 로고 (위 한 줄)
 const TH_NAV = [['home', '홈'], ['map', '지도'], ['sld', '단선도'], ['dg', '회로도'], ['plan', '위치'], ['zone', '부하도면'], ['chk', '점검'], ['pat', '순찰']];
 
 /* ---------- 최근 본 반 (홈) ---------- */
@@ -83,6 +85,7 @@ function homeView() {
   const bs = document.createElement('select'); bs.id = 'thBld'; bs.title = '동 고르기';
   const sw = document.createElement('label'); sw.id = 'thQ'; sw.innerHTML = `${thIc('srch', 17)}<input id="thQi" placeholder="반 · 부하 · 차단기 검색" autocomplete="off"><span class="kbd">Ctrl K</span>`;
   ttl.after(bs); bs.after(sw);
+  const wd = new Image(); wd.id = 'thWord'; wd.alt = '종근당'; wd.onload = () => { hdr.insertBefore(wd, ttl); const sm = ttl.querySelector('small'); if (sm) sm.textContent = '천안공장'; }; wd.src = 'logo-full.png';   // 글자 로고 (파일 있으면)
   // 홈 탭 버튼 (핸드폰 탭 줄에도)
   const tb = document.getElementById('tabs'); if (tb && !tb.querySelector('[data-t="home"]')) { const h = document.createElement('button'); h.dataset.t = 'home'; h.textContent = '홈'; tb.insertBefore(h, tb.firstChild); }
   // 동 고르기 = 기존 동 줄과 같은 동작
@@ -132,7 +135,8 @@ body:not(.mob){flex-direction:column;padding-left:76px}
 #thNav{display:none}
 body:not(.mob) #thNav{position:fixed;left:0;top:0;bottom:0;width:76px;background:var(--nv);display:flex;flex-direction:column;align-items:center;gap:3px;padding:12px 0;z-index:40}
 #thNav #thLogo{width:46px;height:46px;border-radius:12px;background:#fff;display:grid;place-items:center;margin-bottom:12px;overflow:hidden}
-#thNav #logo{height:auto;min-width:0;font-size:13px;color:var(--nv);letter-spacing:-.5px}#thNav #logo img{width:40px;height:40px;object-fit:contain}
+#thNav #logo{height:auto;min-width:0;font-size:13px;color:var(--nv);letter-spacing:-.5px}#thNav #logo img{width:46px;height:46px;object-fit:cover;display:block}
+#thWord{display:none}body:not(.mob) #thWord{display:block;height:26px;margin-right:-2px}
 #thNav [data-t2]{width:64px;padding:9px 0 7px;border:0;border-radius:12px;background:none;color:#aab3d9;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px}
 #thNav [data-t2]:hover{color:#fff;background:rgba(255,255,255,.06)}#thNav [data-t2].on{background:rgba(255,255,255,.14);color:#fff;font-weight:700}#thNav .sp{flex:1}
 body:not(.mob) header{height:60px;border-bottom:1px solid var(--ln);padding:0 18px;gap:12px;flex-wrap:nowrap}
@@ -169,6 +173,11 @@ body.mob .thTwo{grid-template-columns:1fr}
 body.mob header{border-bottom:1px solid var(--ln)}body.mob header .ttl{border-left:0;padding-left:2px}body.mob header .ttl b{color:var(--tx)}
 body.mob #mbNav button svg{display:block}`;
   document.head.appendChild(s);
+  // 로고: 직접 올린 것(백업에 저장) → 없으면 저장소의 로고 파일(TH_LOGO) → 없으면 'CKD'
+  const _rl = renderLogo; renderLogo = function () { _rl.apply(this, arguments); if (!TH_LOGO) return;
+    const el = document.getElementById('logo'); if (!el || (S.cfg && S.cfg.logo)) return;
+    const im = new Image(); im.alt = '로고'; im.onload = () => { if (!(S.cfg && S.cfg.logo)) { el.innerHTML = ''; el.appendChild(im); } }; im.src = TH_LOGO; };
+  if (TH_LOGO) renderLogo();
   fillB();
   setTimeout(() => { const M = {patrol: 'pat', field: 'field', tree: 'tree', plan: 'plan', main: 'map', info: 'info'};
     document.querySelectorAll('#mbNav button').forEach(b => { const k = M[b.dataset.mv]; const sp = b.querySelector('span'); if (k && sp) b.innerHTML = thIc(k, 22) + sp.outerHTML; }); }, 0);
