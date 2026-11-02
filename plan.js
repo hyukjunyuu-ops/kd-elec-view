@@ -16,6 +16,7 @@
 #view .plEd button svg{width:16px;height:16px}
 #view .plEd .dng{color:#dc2626}
 #view .plHint{background:#eef2ff;border:1px solid #c7d2fe;color:#1e3a8a;border-radius:6px;padding:5px 8px;font-size:12px;margin-bottom:6px}
+#view .plRo{display:none;color:#64748b}body.ro #view .plRo{display:inline}
 #view .plBtn{padding:6px 12px;border:1px solid #262f7d;background:#262f7d;color:#fff;border-radius:6px;cursor:pointer}
 #view #plW{overflow:auto;max-height:calc(100vh - 250px);border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc}
 #view #plS{position:relative;min-width:200px;margin:0}
@@ -129,7 +130,7 @@ function plIc(i,dim){const c=`${i.nid&&i.nid===UI.sel?' hot':''}${dim?' dim':''}
 async function plLoadImg(k){const im=$('#plImg'),no=$('#plNo');if(!im)return;let u=PL.img[k];
   if(u===undefined){try{u=await Store.img.get(k);}catch(e){}PL.img[k]=u||'';}
   if($('#plImg')!==im)return;
-  if(u){im.src=u;if(no)no.remove();}else if(no)no.innerHTML='도면 이미지가 없어요. <button class="plBtn" data-pla="img">🖼 이미지 올리기</button>';}
+  if(u){im.src=u;if(no)no.remove();}else if(no)no.innerHTML='도면 이미지가 없어요. <button class="plBtn" data-pla="img">🖼 이미지 올리기</button><span class="plRo">위쪽 [✎ 편집]을 켜면 올릴 수 있어요.</span>';}
 
 function plView(){
   plInit();
@@ -157,7 +158,7 @@ function plView(){
   if(PL.place){const n=byId(PL.place.ids[0]);h+=`<div class="plHint">📍 도면을 클릭해 <b>${esc(n?label(n):'')}</b> 위치를 찍으세요 · 남은 ${PL.place.ids.length}개 · Esc 종료 <button data-plcx="1" style="margin-left:6px;padding:3px 12px;border:1px solid #1e3a8a;background:#fff;color:#1e3a8a;border-radius:6px;font-size:12px">취소</button></div>`;}
   else if(PL.tool&&H){const n=byId(plIcNid(P));h+=`<div class="plHint">${PL.tool==='box'?'▭ 도면에서 끌어서 범위를 그리세요':'도면을 클릭할 때마다 <b>'+PL_IC[PL.tool].l+'</b> 추가'} · 연결 회로: <b>${n?esc(label(n)):'없음 (트리에서 회로를 먼저 고르면 연결돼요)'}</b> · Esc 종료</div>`;}
   if(!P)h+=`<div class="empty">아직 층 도면이 없어요. 위쪽 <b>[+ 층 도면]</b>으로 층 도면 이미지를 올려 주세요.${UI.bld?'<br>(지금은 '+esc(UI.bld)+'만 보고 있어요)':''}</div>`;
-  else if(H&&!zc)h+=`<div class="empty"><b>${esc(label(H))}</b>의 부하도면이 아직 없어요.<br><br><button class="plBtn" data-pla="mkZ">📄 부하도면 만들기</button></div>`;
+  else if(H&&!zc)h+=`<div class="empty"><b>${esc(label(H))}</b>의 부하도면이 아직 없어요.<br><br><button class="plBtn" data-pla="mkZ">📄 부하도면 만들기</button><span class="plRo">위쪽 [✎ 편집]을 켜면 만들 수 있어요.</span></div>`;
   else{const key=P.f?plFK(P.f):plZK(P.id,P.s),zk=H?P.id+'|'+P.s:'',foc=H?plFocus(H):null,dimOf=n=>!!(foc&&(!n||!isAnc(foc,n)));let m='';
     if(P.f)S.nodes.forEach(n=>{if(n.floor===P.f&&plOnF(n)&&plVF(n))m+=plMk(n,n.x,n.y,false);});
     else{S.icons.forEach(i=>{if(i.z===zk)m+=plIc(i,i.nid?dimOf(byId(i.nid)):!!foc);});S.nodes.forEach(n=>{if(n.zp===zk)m+=plMk(n,n.zx,n.zy,dimOf(n));});}
@@ -235,7 +236,7 @@ document.addEventListener('click',e=>{const t=e.target;if(!t.closest||!/^(plan|z
   if(PL.edit||PL.place||PL.tool)return;
   const m=t.closest('#plS .mk'),ic=t.closest('#plS [data-ic]');
   if(m){const n=byId(m.dataset.id);if(!n)return;
-    if(e.detail>=2&&P&&P.f&&PL_P(n.type)){PL.cur=plZK(n.id,1);PL.keep=true;if(UI.sel!==n.id)select(n.id,true);else go();return;}
+    if(e.detail>=2&&P&&P.f&&PL_P(n.type)){PL.cur=plZK(n.id,1);PL.keep=true;UI.tab='zone';if(typeof ZO!=='undefined')ZO.last=n.id;saveUI();if(UI.sel!==n.id)select(n.id,true);else go();return;}
     if(UI.sel!==n.id){PL.keep=true;select(n.id,true);}return;}
   if(ic){const i=S.icons.find(x=>x.id===ic.dataset.ic);if(i&&i.nid&&byId(i.nid)&&UI.sel!==i.nid){PL.keep=true;select(i.nid,true);}}
 });
