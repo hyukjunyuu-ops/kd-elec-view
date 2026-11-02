@@ -289,6 +289,27 @@ function doGet(e) {
   return out({ok: true});
 }`;
 
+// 연결 테스트: 어디서 막혔는지 알려주기
+async function ptDiag() {
+  const c = ptCfg(), u = (c.url || '').trim();
+  if (!u) return '✘ Apps Script 주소가 비어 있어요.';
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(u))
+    return '✘ 주소 모양이 달라요.\n\n· https://script.google.com/macros/s/……/exec 로 끝나야 해요\n· 편집기 주소(…/edit)나 /dev 주소가 아니라, [배포 → 새 배포] 뒤에 나온 "웹 앱 URL"을 넣어 주세요.';
+  let r, txt = '';
+  try { r = await fetch(u + '?a=cfg&k=' + encodeURIComponent(c.key || '')); txt = await r.text(); }
+  catch (e) { return '✘ 응답을 못 받았어요 (' + e.message + ').\n\n가장 흔한 원인: 배포 때 "액세스 권한이 있는 사용자"를 [모든 사용자]로 안 했어요.\n→ 배포 → 배포 관리 → ✏️ → 액세스: 모든 사용자 → 버전: 새 버전 → 배포\n\n(회사 구글 계정이면 관리자가 막았을 수 있어요 → 개인 계정으로 만들어 주세요)'; }
+  if (/<html|<!DOCTYPE/i.test(txt)) {
+    if (/로그인|Sign in|accounts\.google/i.test(txt)) return '✘ 구글 로그인 화면이 돌아왔어요.\n\n→ 배포 설정의 "액세스 권한이 있는 사용자"를 [모든 사용자]로 바꾸고 새 버전으로 다시 배포해 주세요.';
+    if (/doGet|함수를 찾을 수 없|Script function not found/i.test(txt)) return '✘ 스크립트 코드가 안 들어간 상태로 배포됐어요.\n\n→ 코드를 붙여 넣고 저장(Ctrl+S)한 뒤, 배포 관리 → ✏️ → 버전: 새 버전 → 배포';
+    return '✘ 웹 앱이 오류 화면을 보냈어요. 코드를 다시 붙여 넣고 저장 → 새 버전으로 배포해 주세요.\n\n(받은 내용 앞부분: ' + txt.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 120) + ')';
+  }
+  let j; try { j = JSON.parse(txt); } catch (e) { return '✘ 알 수 없는 응답: ' + txt.slice(0, 120); }
+  if (!j.ok && j.err === 'key') return '✘ 비밀 키가 안 맞아요.\n\n· 코드 2번째 줄 KEY = \'…\' 안의 글자와 ④의 비밀 키 칸이 똑같아야 해요 (띄어쓰기 주의)\n· 코드에서 키를 바꿨다면 저장 뒤 [새 버전으로 배포]까지 해야 반영돼요';
+  if (!j.ok) return '✘ 웹 앱 응답: ' + JSON.stringify(j).slice(0, 120);
+  const ok2 = await ptPost({a: 'test'});
+  return ok2 ? '✔ 연결됐어요. 이제 [설정을 시트로 보내기]와 ☁ 계통 동기화 [켜기]를 하면 돼요.' : '△ 읽기는 되는데 저장이 안 돼요. 스크립트를 최신 코드로 다시 붙여 넣고 새 버전으로 배포해 주세요.';
+}
+
 /* ---------- 그리기 · 이벤트 ---------- */
 function ptRerender() {
   const v = document.getElementById('ptV');
@@ -322,7 +343,7 @@ document.addEventListener('click', async e => {
   if (a === 'qr') return ptQrPage();
   if (a === 'gas') return uiModal(ptGasH(), true);
   if (a === 'gascopy') { try { await navigator.clipboard.writeText(PT_GAS); toast('코드를 복사했어요.', false); } catch (_) { alert('복사가 막혔어요. 상자 안 코드를 직접 복사해 주세요.'); } return; }
-  if (a === 'test') { const ok = await ptPost({a: 'test'}); return alert(ok ? '✔ 연결됐어요.' : '✘ 연결 안 됨 — 주소·비밀 키·배포(액세스: 모든 사용자)를 확인하세요.'); }
+  if (a === 'test') return alert(await ptDiag());
   if (a === 'push') { const cfg = {rooms: c.rooms.map(r => ({id: r.id, name: r.name, bld: r.bld || (typeof ptRmBld === 'function' ? ptRmBld(r) : ''), panels: (r.panels || []).map(p => ({n: p.n, v: p.v}))})), items: c.items, lim: c.lim};
     const ok = await ptPost({a: 'cfg', cfg}); return alert(ok ? '✔ 시트에 설정을 보냈어요. 순찰자 핸드폰이 다음에 열 때 받아요.' : '✘ 보내기 실패 — [연결 테스트]부터 해 보세요.'); }
   if (a === 'setup') { const u = ptSetupLink();
