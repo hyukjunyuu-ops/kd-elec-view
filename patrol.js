@@ -19,7 +19,9 @@ const ptLS = (k, v) => { try { if (v === undefined) return JSON.parse(localStora
 // 설정: PC는 계통 데이터(S.cfg.patrol), 순찰 전용 핸드폰은 설정 링크로 받은 것
 function ptCfg() {
   const own = typeof S !== 'undefined' && S.cfg && S.cfg.patrol, link = ptLS('cfg');
-  if (own && !ptOnly()) { const c = own; c.items = c.items || PT_DEF.items.slice(); c.lim = Object.assign({}, PT_DEF.lim, c.lim || {}); return c; }
+  if (own && !ptOnly()) { const c = own; c.items = c.items || PT_DEF.items.slice(); c.lim = Object.assign({}, PT_DEF.lim, c.lim || {});
+    if (!c.url && link && link.url) { c.url = link.url; c.key = link.key; if (!link.rooms || !own.rooms.some(r => (r.panels || []).length)) c.rooms = link.rooms || c.rooms; }   // 설정 링크로 받은 시트 주소를 전체 기능에서도
+    return c; }
   if (link) return link;
   if (typeof S !== 'undefined' && S.cfg) { S.cfg.patrol = JSON.parse(JSON.stringify(PT_DEF)); return S.cfg.patrol; }
   return JSON.parse(JSON.stringify(PT_DEF));
