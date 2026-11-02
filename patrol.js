@@ -220,7 +220,7 @@ function ptGasH() {
     <textarea readonly rows="12" style="width:100%;font-family:monospace;font-size:11px">${esc(PT_GAS)}</textarea>
     <div class="mdlA"><button data-pta="gascopy">코드 복사</button><button data-mdl="x">닫기</button></div>`;
 }
-const PT_GAS = `// 전기실 순찰 — 구글 시트 저장 (Apps Script 웹 앱)
+const PT_GAS = `// 전기실 순찰 + 계통 동기화 — 구글 시트 (Apps Script 웹 앱)
 const KEY = '여기에-비밀키';
 function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 function sh(n, head) { const ss = SpreadsheetApp.getActive(); let s = ss.getSheetByName(n); if (!s) { s = ss.insertSheet(n); if (head) s.appendRow(head); } return s; }
@@ -230,6 +230,26 @@ function doPost(e) {
   try {
     if (d.a === 'cfg') { sh('설정').getRange(1, 1).setValue(JSON.stringify(d.cfg)); return out({ok: true}); }
     if (d.a === 'test') return out({ok: true});
+    if (d.a === 'info') { const v = syRows(); return out({ok: true, count: v.filter(r => r[5] !== '').length}); }
+    if (d.a === 'push') {   // 계통 항목 변경: 항목마다 최신 1줄 + 이력
+      const s = sh('계통현재', ['키', '순번', '시각', '누가', '기기', 'json']), h = sh('계통이력', ['시각', '누가', '항목', '내용']);
+      const v = s.getDataRange().getValues(), row = {}; v.forEach((r, i) => { if (i) row[r[0]] = i + 1; });
+      const P = PropertiesService.getScriptProperties(); let q = +P.getProperty('seq') || 0; const seqs = [], now = new Date(), H = [];
+      d.ops.forEach(o => { q++; seqs.push(q); const val = [o.k, q, now, o.by || '', d.dev || '', o.v == null ? '' : o.v];
+        if (row[o.k]) s.getRange(row[o.k], 1, 1, 6).setValues([val]); else { s.appendRow(val); row[o.k] = s.getLastRow(); }
+        let nm = ''; try { const j = o.v ? JSON.parse(o.v) : null; nm = j && (j.name || j.no) ? [j.no, j.name].filter(Boolean).join(' ') : ''; } catch (_) {}
+        H.push([now, o.by || '', o.k, o.v == null ? '삭제' : nm]); });
+      if (H.length) h.getRange(h.getLastRow() + 1, 1, H.length, 4).setValues(H);
+      P.setProperty('seq', String(q)); return out({ok: true, seq: q, seqs});
+    }
+    if (d.a === 'pull') { const since = +d.since || 0, v = syRows(); return out({ok: true, seq: +PropertiesService.getScriptProperties().getProperty('seq') || 0,
+      ops: v.filter(r => +r[1] > since).map(r => ({k: r[0], seq: +r[1], by: r[3], dev: r[4], v: r[5] === '' ? null : r[5]}))}); }
+    if (d.a === 'snap') {   // 하루 한 번 전체 스냅샷 (드라이브 '계통 스냅샷' 폴더)
+      const nm = '계통_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd') + '.json', it = DriveApp.getFoldersByName('계통 스냅샷');
+      const fo = it.hasNext() ? it.next() : DriveApp.createFolder('계통 스냅샷');
+      if (!fo.getFilesByName(nm).hasNext()) fo.createFile(nm, JSON.stringify(d.state), 'application/json');
+      return out({ok: true});
+    }
     if (d.a === 'rec') {
       const r = d.r, s1 = sh('순찰', ['날짜', '시간', '전기실', '순찰자', 'QR', '온도', '습도', '이상', '메모', 'id', 'json']);
       const s2 = sh('계측', ['날짜', '시간', '전기실', '배전반', 'V', 'A', 'kW', 'PF', '순찰자', 'id']);
@@ -242,6 +262,7 @@ function doPost(e) {
     return out({ok: false, err: 'a'});
   } finally { lock.releaseLock(); }
 }
+function syRows() { const v = sh('계통현재', ['키', '순번', '시각', '누가', '기기', 'json']).getDataRange().getValues(); return v.slice(1); }
 function doGet(e) {
   const p = e.parameter; if (p.k !== KEY) return out({ok: false, err: 'key'});
   if (p.a === 'cfg') { const v = sh('설정').getRange(1, 1).getValue(); return out({ok: true, cfg: v ? JSON.parse(v) : null}); }
