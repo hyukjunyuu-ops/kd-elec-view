@@ -179,8 +179,9 @@ function ptSetH(c) {
   const L = c.lim, cand = S.nodes.filter(n => (['MDB', 'MCC', 'PNL', 'UPS'].includes(n.type) || (n.type === 'CB' && n.cbk === 'ACB')) && !isSlot(n));
   const room = rm => `<div class="ptRm"><div class="h"><input data-ptrn="${esc(rm.id)}" value="${esc(rm.name)}"><span class="mu">${(rm.panels || []).length}개</span></div>
     <ol>${(rm.panels || []).map((p, j) => `<li><b>${esc(p.n)}</b> <span class="mu">${esc(p.v || '')}</span><span class="sp"></span><button data-ptmv="${esc(rm.id)}|${j}|-1">▲</button><button data-ptmv="${esc(rm.id)}|${j}|1">▼</button><button data-ptdel="${esc(rm.id)}|${j}">✕</button></li>`).join('')}</ol>
-    <div class="ad"><select data-ptadd="${esc(rm.id)}"><option value="">+ 배전반 추가 (${esc(rm.bld)})</option>${cand.filter(n => bk(n) === rm.bld && !(rm.panels || []).some(p => p.nid === n.id)).map(n => `<option value="${esc(n.id)}">${esc(tlabel(n))} · ${esc(label(n))}</option>`).join('')}
-      <option value="" disabled>── 다른 동 ──</option>${cand.filter(n => bk(n) !== rm.bld).slice(0, 300).map(n => `<option value="${esc(n.id)}">${esc(bk(n))} · ${esc(label(n))}</option>`).join('')}</select>
+    <div class="ad"><select data-ptadd="${esc(rm.id)}">${(() => { const B = ptRmBld(rm), L = cand.filter(n => ptSameBld(bk(n), B) && !(rm.panels || []).some(p => p.nid === n.id))
+        .sort((a, b) => ptOrd(a) - ptOrd(b) || label(a).localeCompare(label(b), 'ko', {numeric: true}));
+      return `<option value="">+ 배전반 추가 (${esc(B || '동 모름')} · ${L.length}개)</option>` + (L.length ? L.map(n => `<option value="${esc(n.id)}">${esc(tlabel(n))} · ${esc(label(n))}${effV(n) ? ' · ' + esc(effV(n)) : ''}</option>`).join('') : '<option value="" disabled>이 동에 반이 아직 없어요 → [+ 직접 입력]</option>'); })()}</select>
       <button data-ptfree="${esc(rm.id)}" title="트리에 없는 반 이름 직접">+ 직접 입력</button></div></div>`;
   return `<div class="ptSet">
     <div class="ptBox"><h3>① 전기실 · 계측할 배전반 <span class="mu">(QR 하나 = 전기실 하나)</span></h3><div class="ptRms">${c.rooms.map(room).join('')}</div>
@@ -197,6 +198,14 @@ function ptSetH(c) {
       <div class="mu">설정 링크는 순찰자 핸드폰에서 한 번만 열면 돼요 (카톡으로 보내기). 문에는 전기실 QR만 붙여요.</div></div></div>`;
 }
 // 사이트 주소 (공개 사이트 기준, 파일로 열었으면 그 주소)
+// 전기실의 동: 저장된 동 → 이름 앞부분 (예: '바이오동 ① 전기실' → 바이오동, '페니동' ↔ '페니실린동')
+function ptRmBld(rm) {
+  if (rm.bld && S.blds.includes(rm.bld)) return rm.bld;
+  const nm = String(rm.name || ''), b = S.blds.find(x => nm.startsWith(x)) || S.blds.find(x => x.length >= 2 && nm.slice(0, 2) === x.slice(0, 2)) || rm.bld || '';
+  return b;
+}
+const ptSameBld = (a, b) => !!a && !!b && (a === b || (a.slice(0, 2) === b.slice(0, 2) && /동$/.test(a) && /동$/.test(b)));
+const ptOrd = n => n.type === 'CB' ? 0 : n.type === 'MDB' ? 1 : n.type === 'MCC' ? 2 : n.type === 'UPS' ? 3 : 4;   // ACB → 배전반 → MCC → UPS → 분전반
 const ptBase = () => location.href.split(/[?#]/)[0];
 function ptQrSvg(text, px) {
   if (typeof qrcode !== 'function') return '';
@@ -209,7 +218,7 @@ function ptQrPage() {
   w.document.close();
 }
 function ptSetupLink() {
-  const c = ptCfg(), cfg = {rooms: c.rooms.map(r => ({id: r.id, name: r.name, panels: (r.panels || []).map(p => ({n: p.n, v: p.v}))})), items: c.items, lim: c.lim, url: c.url, key: c.key};
+  const c = ptCfg(), cfg = {rooms: c.rooms.map(r => ({id: r.id, name: r.name, bld: r.bld || (typeof ptRmBld === 'function' ? ptRmBld(r) : ''), panels: (r.panels || []).map(p => ({n: p.n, v: p.v}))})), items: c.items, lim: c.lim, url: c.url, key: c.key};
   return ptBase() + '#ps=' + btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
 }
 function ptGasH() {
@@ -309,7 +318,7 @@ document.addEventListener('click', async e => {
   if (a === 'gas') return uiModal(ptGasH(), true);
   if (a === 'gascopy') { try { await navigator.clipboard.writeText(PT_GAS); toast('코드를 복사했어요.', false); } catch (_) { alert('복사가 막혔어요. 상자 안 코드를 직접 복사해 주세요.'); } return; }
   if (a === 'test') { const ok = await ptPost({a: 'test'}); return alert(ok ? '✔ 연결됐어요.' : '✘ 연결 안 됨 — 주소·비밀 키·배포(액세스: 모든 사용자)를 확인하세요.'); }
-  if (a === 'push') { const cfg = {rooms: c.rooms.map(r => ({id: r.id, name: r.name, panels: (r.panels || []).map(p => ({n: p.n, v: p.v}))})), items: c.items, lim: c.lim};
+  if (a === 'push') { const cfg = {rooms: c.rooms.map(r => ({id: r.id, name: r.name, bld: r.bld || (typeof ptRmBld === 'function' ? ptRmBld(r) : ''), panels: (r.panels || []).map(p => ({n: p.n, v: p.v}))})), items: c.items, lim: c.lim};
     const ok = await ptPost({a: 'cfg', cfg}); return alert(ok ? '✔ 시트에 설정을 보냈어요. 순찰자 핸드폰이 다음에 열 때 받아요.' : '✘ 보내기 실패 — [연결 테스트]부터 해 보세요.'); }
   if (a === 'setup') { const u = ptSetupLink();
     return uiModal(`<h3>📱 순찰자 핸드폰 설정</h3><p>순찰자 핸드폰에서 이 링크를 <b>한 번</b> 열면 순찰 전용 화면이 돼요 (카톡으로 보내기). 또는 아래 QR을 찍어도 돼요.</p>
