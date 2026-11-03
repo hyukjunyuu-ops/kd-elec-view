@@ -80,7 +80,15 @@ async function ptFetch() {   // 최근 기록 (3명 것 다) + 최신 설정
   try {
     const u = `${c.url}?a=recs&days=35&k=${encodeURIComponent(c.key)}`, r = await fetch(u), j = await r.json();
     if (j.ok) { PT.remote = j.recs || []; PT.fetched = Date.now(); }
-    if (ptOnly()) { const r2 = await fetch(`${c.url}?a=cfg&k=${encodeURIComponent(c.key)}`), j2 = await r2.json(); if (j2.ok && j2.cfg && j2.cfg.rooms) ptLS('cfg', Object.assign(j2.cfg, {url: c.url, key: c.key})); }
+    // 시트의 순찰 설정(전기실·배전반 목록)이 더 새것이면 받기 — PC에서 고치면 핸드폰은 다음에 열 때 자동 반영
+    const r2 = await fetch(`${c.url}?a=cfg&k=${encodeURIComponent(c.key)}`), j2 = await r2.json(), g = j2.ok && j2.cfg;
+    // 이 PC 설정이 더 새것이면(또는 시트에 아직 없으면) 시트로 올리기
+    if (!ptOnly() && c.rooms.some(r => (r.panels || []).length) && (!g || !g.rooms || !g.at || (c.at || 0) > g.at)) { c.at = c.at || Date.now(); await ptPost({a: 'cfg', cfg: ptCfgOut(c)}); }
+    else if (g && g.rooms) {
+      if (ptOnly()) ptLS('cfg', Object.assign(g, {url: c.url, key: c.key}));
+      else if ((g.at || 0) > (c.at || 0) && S.cfg && S.cfg.patrol) { Object.assign(S.cfg.patrol, {rooms: g.rooms, items: g.items || c.items, lim: g.lim || c.lim, at: g.at}); if (typeof save === 'function') save(); }
+      if (PT.draft && !ptTouched(PT.draft)) PT.draft = null;   // 아직 아무것도 안 적었으면 새 목록으로 다시
+    }
   } catch (e) {}
   ptRerender();
 }
@@ -317,7 +325,15 @@ function ptRerender() {
   if (typeof UI !== 'undefined' && UI.tab === 'pat' && !(document.body.dataset.mv === 'patrol')) renderView();
 }
 function ptOpenRoom(id, qr) { PT.room = id; PT.qr = qr ? 1 : 0; PT.start = Date.now(); PT.draft = null; if (typeof mbSet === 'function' && MB.on) mbSet('patrol'); else { UI.tab = 'pat'; } ptRerender(); const v = document.getElementById('ptV'); if (v) v.scrollTop = 0; }
-const ptCfgSave = () => { if (!ptOnly() && typeof save === 'function') save(); };
+// 순찰 설정을 고치면 저장 + 시트에도 자동으로 보내기 (핸드폰이 열 때 받아감)
+const ptCfgOut = c => ({rooms: c.rooms.map(r => ({id: r.id, name: r.name, bld: r.bld || (typeof ptRmBld === 'function' ? ptRmBld(r) : ''), panels: (r.panels || []).map(p => ({nid: p.nid || '', n: p.n, v: p.v}))})), items: c.items, lim: c.lim, at: c.at || Date.now()});
+const ptTouched = d => !!(d.t !== '' || d.h !== '' || d.memo || Object.keys(d.items || {}).length || (d.P || []).some(p => ['V', 'A', 'kW', 'PF'].some(k => p[k] !== '' && p[k] != null)));
+let ptCfgT = 0;
+const ptCfgSave = () => {
+  if (ptOnly()) return; const c = ptCfg(); c.at = Date.now();
+  if (typeof save === 'function') save();
+  clearTimeout(ptCfgT); if (c.url) ptCfgT = setTimeout(() => ptPost({a: 'cfg', cfg: ptCfgOut(c)}), 1500);
+};
 document.addEventListener('click', async e => {
   const t = e.target; if (!t.closest) return;
   let b;
@@ -344,7 +360,7 @@ document.addEventListener('click', async e => {
   if (a === 'gas') return uiModal(ptGasH(), true);
   if (a === 'gascopy') { try { await navigator.clipboard.writeText(PT_GAS); toast('코드를 복사했어요.', false); } catch (_) { alert('복사가 막혔어요. 상자 안 코드를 직접 복사해 주세요.'); } return; }
   if (a === 'test') return alert(await ptDiag());
-  if (a === 'push') { const cfg = {rooms: c.rooms.map(r => ({id: r.id, name: r.name, bld: r.bld || (typeof ptRmBld === 'function' ? ptRmBld(r) : ''), panels: (r.panels || []).map(p => ({n: p.n, v: p.v}))})), items: c.items, lim: c.lim};
+  if (a === 'push') { c.at = c.at || Date.now(); const cfg = ptCfgOut(c);
     const ok = await ptPost({a: 'cfg', cfg}); return alert(ok ? '✔ 시트에 설정을 보냈어요. 순찰자 핸드폰이 다음에 열 때 받아요.' : '✘ 보내기 실패 — [연결 테스트]부터 해 보세요.'); }
   if (a === 'setup') { const u = ptSetupLink();
     return uiModal(`<h3>📱 순찰자 핸드폰 설정</h3><p>순찰자 핸드폰에서 이 링크를 <b>한 번</b> 열면 순찰 전용 화면이 돼요 (카톡으로 보내기). 또는 아래 QR을 찍어도 돼요.</p>
