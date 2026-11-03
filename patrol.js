@@ -425,7 +425,10 @@ async function ptScan() {
 (function () {
   const v = document.createElement('section'); v.id = 'ptV'; document.querySelector('main').appendChild(v);
   const h = location.hash.match(/ps=([^&]+)/);
-  if (h) { try { const cfg = JSON.parse(decodeURIComponent(escape(atob(h[1])))); ptLS('cfg', cfg); ptLS('only', 1); history.replaceState(null, '', ptBase()); } catch (e) { alert('설정 링크가 잘못됐어요.'); } }
+  if (h) { try { const cfg = JSON.parse(decodeURIComponent(escape(atob(h[1])))); ptLS('cfg', cfg);
+    // 계통 동기화 링크(&sy=1)는 전체 기능으로 열고 동기화를 물어봄 · 순찰만 링크는 순찰 전용 화면
+    if (/[#&]sy=1/.test(location.hash)) { ptLS('only', 0); try { sessionStorage.setItem('ckd_sy_ask', '1'); } catch (_) {} } else ptLS('only', 1);
+    history.replaceState(null, '', ptBase()); } catch (e) { alert('설정 링크가 잘못됐어요.'); } }
   const q = location.search.match(/[?&]pr=([^&#]+)/);
   // 순찰 전용 핸드폰 · QR로 들어옴 → 순찰 화면
   setTimeout(() => {

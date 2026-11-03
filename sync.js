@@ -142,7 +142,8 @@ document.addEventListener('click', e => {
 {
   const _sl = ptSetupLink;
   ptSetupLink = function () { const u = _sl.apply(this, arguments); return SY.on ? u + '&sy=1' : u; };
-  if (/[#&]sy=1/.test(location.hash) && !SY.on) setTimeout(() => { if (confirm('계통 데이터 동기화도 켤까요? (시트의 최신 계통을 받아와요)')) syEnable(); }, 1200);
+  let ask = false; try { ask = sessionStorage.getItem('ckd_sy_ask') === '1'; sessionStorage.removeItem('ckd_sy_ask'); } catch (_) {}
+  if (ask && !SY.on) setTimeout(() => { if (confirm('계통 데이터 동기화도 켤까요? (시트의 최신 계통을 받아와요)')) syEnable(); }, 1200);
 }
 (function () {
   const s = document.createElement('style');
