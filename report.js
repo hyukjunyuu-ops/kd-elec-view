@@ -276,6 +276,27 @@ document.addEventListener('click', async e => {
     i.click();
   }
 });
+// 계통 트리에서 고른 항목으로도 정전 범위 정하기 (속성창 아래 상자)
+{
+  const _rf = renderForm;
+  renderForm = function () {
+    _rf.apply(this, arguments);
+    const n = byId(UI.sel), el = document.getElementById('form'); if (!n || !el || isSlot(n) || FP_SRC[n.type]) return;
+    const on = FP.off.includes(n.id), L = FP.off.map(byId).filter(Boolean), d = document.createElement('div'); d.className = 'rpSel';
+    d.innerHTML = `<div class="h">⏻ 계획정전</div>
+      <div class="b"><button data-rpsel="${esc(n.id)}" class="${on ? 'on' : ''}">${on ? '✓ 정전 범위에 들어 있음 (빼기)' : '이 아래를 정전 범위에 넣기'}</button>${L.length ? `<button data-rp="1" class="pri">📄 계획서 만들기</button>` : ''}</div>
+      ${L.length ? `<div class="l">정전 범위 ${L.length}곳: ${L.map(x => `<span>${esc(label(x))}<i data-rpdel="${esc(x.id)}" title="빼기">✕</i></span>`).join('')}</div>` : ''}`;
+    const at = el.querySelector('.act'); at ? at.parentNode.insertBefore(d, at) : el.appendChild(d);
+  };
+}
+document.addEventListener('click', e => {
+  const t = e.target; if (!t.closest) return;
+  const a = t.closest('[data-rpsel]'), dl = t.closest('[data-rpdel]'); if (!a && !dl) return;
+  const id = (a || dl).dataset.rpsel || dl.dataset.rpdel, s = new Set(FP.off);
+  if (a) s.has(id) ? s.delete(id) : s.add(id); else s.delete(id);
+  FP.off = [...s]; fpKeep(); renderAll();
+  if (a && s.has(id)) toast(`정전 범위에 넣었어요 · ${s.size}곳 — [📄 계획서 만들기]`, false);
+});
 (function () { const s = document.createElement('style');
   s.textContent = `#mdl .rpBig button{width:100%;padding:12px;border-radius:10px;border:0;background:#262f7d;color:#fff;font-size:15px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
 #mdl .rpBig small{font-weight:normal;font-size:11.5px;color:#c7d2fe}
@@ -285,5 +306,10 @@ document.addEventListener('click', async e => {
 #mdl .rpF{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px 10px;margin:8px 0}#mdl .rpF label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:#475569;font-weight:600;min-width:0}
 #mdl .rpF label:nth-child(1),#mdl .rpF label:nth-child(4),#mdl .rpF label:nth-child(5),#mdl .rpF label:nth-child(6){grid-column:span 4}#mdl .rpF label:nth-child(2),#mdl .rpF label:nth-child(3){grid-column:span 2}
 #mdl .rpF input,#mdl .rpF textarea{font:inherit;font-weight:400;font-size:13px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;color:#0f172a;min-width:0}
+#form .rpSel{margin-top:12px;padding:9px 10px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;font-size:12.5px}
+#form .rpSel .h{font-weight:700;color:#374151;margin-bottom:6px}#form .rpSel .b{display:flex;gap:6px;flex-wrap:wrap}
+#form .rpSel button{padding:5px 10px;border:1px solid #d1d5db;background:#fff;border-radius:7px;cursor:pointer;font-size:12.5px}#form .rpSel button.on{border-color:#dc2626;color:#dc2626;background:#fef2f2}
+#form .rpSel button.pri{background:#262f7d;color:#fff;border-color:#262f7d}#form .rpSel .l{margin-top:7px;color:#6b7280;line-height:1.9}
+#form .rpSel .l span{display:inline-block;background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:0 6px;margin:0 3px 0 0}#form .rpSel .l i{font-style:normal;color:#9ca3af;cursor:pointer;margin-left:4px}#form .rpSel .l i:hover{color:#dc2626}
 #mdl .rpRef{font-size:11.5px;color:#64748b;margin:4px 0 10px}#mdl .rpRef div{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;max-height:44px;overflow:auto}#mdl .rpRef span{background:#f1f5f9;border-radius:4px;padding:1px 6px}`;
   document.head.appendChild(s); })();
