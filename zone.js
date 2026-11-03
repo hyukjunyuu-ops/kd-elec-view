@@ -68,7 +68,7 @@ function zoFloorHost(s) { let c = par(s), g = 0; while (c && g++ < 80) { if (plO
       const ld = s.type === 'LOAD' || s.type === 'CB';
       const b = PL_P(s.type) ? `<div class="zoSt no">⚠ <b>${esc(label(s))}</b> — 아직 층 도면에 위치가 없어요<button class="plBtn" data-pla="put">📍 지금 위치 찍기</button></div>`
         : !ld ? '' : F && F.floor === P.f ? `<div class="zoSt ok">📍 <b>${esc(label(s))}</b> — <b>${esc(label(F))}</b>에 있어요 (빨간 점)</div>`
-        : F ? '' : `<div class="zoSt no">⚠ <b>${esc(label(s))}</b> — 이 부하가 나가는 반이 아직 층 도면에 안 찍혀 있어요</div>`;
+        : F ? '' : `<div class="zoSt no">⚠ <b>${esc(label(s))}</b> — 아직 층 도면에 위치가 없어요${plHost(s) ? ' (나가는 반도 아직 안 찍힘)' : ''}<button class="plBtn" data-pla="put">📍 지금 위치 찍기</button></div>`;
       if (b) h = h.replace(/(<div id="plW">)/, b + '$1');
     }
     return h;

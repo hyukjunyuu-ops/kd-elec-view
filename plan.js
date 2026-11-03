@@ -73,7 +73,11 @@ function plParse(k){const a=String(k||'').split('|');return a[0]==='Z'?{z:1,id:a
 const plOnF=n=>n.floor&&n.x!==''&&n.x!=null;
 const plVF=n=>!PL.vf||(PL.vf==='E'?effSrc(n)==='E':pV(effV(n))===+PL.vf);
 function plDesc(id,out){kids(id).forEach(k=>{out.push(k);plDesc(k.id,out);});return out;}
-function plFloors(){return S.floors.filter(f=>!UI.bld||!f.bld||f.bld===UI.bld);}
+// 층 도면이 속한 동: 직접 지정 → 이름 앞부분(예: '유틸리티동 1층')
+const plFB=f=>f.bld||S.blds.find(b=>String(f.name).startsWith(b))||'';
+// 지금 보는 동: 위쪽 동 고르기 → 트리에서 고른 항목의 동 (전체 보기일 때)
+function plCurB(){if(UI.bld)return UI.bld;const s=byId(UI.sel);return s?bk(s):'';}
+function plFloors(){const b=plCurB(),s=byId(UI.sel),t=s&&plParse(plFloorOf(s));return S.floors.filter(f=>!b||!plFB(f)||plFB(f)===b||(t&&t.f===f.name));}
 
 /* ---------- 기존 데이터 · 이미지 옮기기 ---------- */
 function plInit(){
@@ -157,7 +161,7 @@ function plView(){
     h+=(P.f?`<button data-pla="img">🖼 도면 이미지 교체</button><button data-pla="renF">✎ 층 이름 변경</button><button data-pla="bldF">🏢 동 지정</button><button data-pla="delF" class="dng">🗑 층 도면 삭제</button>`:`<button data-pla="img">🖼 이미지 교체</button><button data-pla="delS" class="dng">🗑 이 장 삭제</button>`)+'</div>';}
   if(PL.place){const n=byId(PL.place.ids[0]);h+=`<div class="plHint">📍 도면을 클릭해 <b>${esc(n?label(n):'')}</b> 위치를 찍으세요 · 남은 ${PL.place.ids.length}개 · Esc 종료 <button data-plcx="1" style="margin-left:6px;padding:3px 12px;border:1px solid #1e3a8a;background:#fff;color:#1e3a8a;border-radius:6px;font-size:12px">취소</button></div>`;}
   else if(PL.tool&&H){const n=byId(plIcNid(P));h+=`<div class="plHint">${PL.tool==='box'?'▭ 도면에서 끌어서 범위를 그리세요':'도면을 클릭할 때마다 <b>'+PL_IC[PL.tool].l+'</b> 추가'} · 연결 회로: <b>${n?esc(label(n)):'없음 (트리에서 회로를 먼저 고르면 연결돼요)'}</b> · Esc 종료</div>`;}
-  if(!P)h+=`<div class="empty">아직 층 도면이 없어요. 위쪽 <b>[+ 층 도면]</b>으로 층 도면 이미지를 올려 주세요.${UI.bld?'<br>(지금은 '+esc(UI.bld)+'만 보고 있어요)':''}</div>`;
+  if(!P)h+=`<div class="empty">${plCurB()?`<b>${esc(plCurB())}</b> 층 도면이 아직 없어요.`:'아직 층 도면이 없어요.'} 위쪽 <b>[+ 층 도면]</b>으로 층 도면 이미지를 올려 주세요.${!UI.bld&&plCurB()?'<br><span class="muted">트리에서 고른 항목의 동 도면만 보여요 · 다른 동 항목을 고르면 그 동 도면으로 바뀌어요</span>':''}</div>`;
   else if(H&&!zc)h+=`<div class="empty"><b>${esc(label(H))}</b>의 부하도면이 아직 없어요.<br><br><button class="plBtn" data-pla="mkZ">📄 부하도면 만들기</button><span class="plRo">위쪽 [✎ 편집]을 켜면 만들 수 있어요.</span></div>`;
   else{const key=P.f?plFK(P.f):plZK(P.id,P.s),zk=H?P.id+'|'+P.s:'',foc=H?plFocus(H):null,dimOf=n=>!!(foc&&(!n||!isAnc(foc,n)));let m='';
     if(P.f)S.nodes.forEach(n=>{if(n.floor===P.f&&plOnF(n)&&plVF(n))m+=plMk(n,n.x,n.y,false);});
@@ -184,9 +188,9 @@ function plAct(a,P,sel){
   const H=P&&P.z?byId(P.id):null,go=()=>{plKeep();renderView();};
   if(a==='zi'||a==='zo'||a==='z1'){PL.z=a==='z1'?1:Math.max(.5,Math.min(6,PL.z*(a==='zi'?1.25:.8)));return go();}
   if(a==='edit'){PL.edit=!PL.edit;PL.place=null;PL.tool='';PL.selIc='';return go();}
-  if(a==='addF'){const nm=(prompt('새 층 도면 이름 (예: 본동 4층, 유틸리티동 1층)',UI.bld?UI.bld+' ':'')||'').trim();if(!nm)return;
+  if(a==='addF'){const nm=(prompt('새 층 도면 이름 (예: 본동 4층, 유틸리티동 1층)',plCurB()?plCurB()+' ':'')||'').trim();if(!nm)return;
     if(S.floors.some(f=>f.name===nm))return alert('같은 이름의 층 도면이 이미 있어요.');
-    S.floors.push({name:nm,bld:UI.bld||S.blds.find(b=>nm.startsWith(b))||''});PL.cur=plFK(nm);PL.keep=true;save();go();return plPickImg(plFK(nm));}
+    S.floors.push({name:nm,bld:S.blds.find(b=>nm.startsWith(b))||plCurB()||''});PL.cur=plFK(nm);PL.keep=true;save();go();return plPickImg(plFK(nm));}
   if(!P)return;
   const curKey=P.f?plFK(P.f):plZK(P.id,P.s);
   if(a==='img')return plPickImg(curKey);
@@ -215,7 +219,7 @@ function plAct(a,P,sel){
     S.floors.find(f=>f.name===old).name=nm;S.nodes.forEach(n=>{if(n.floor===old)n.floor=nm;});
     (async()=>{try{const u=await Store.img.get(plFK(old));if(u){await Store.img.put(plFK(nm),u);await Store.img.del(plFK(old));PL.img[plFK(nm)]=u;}}catch(e){}
       delete PL.img[plFK(old)];PL.cur=plFK(nm);PL.keep=true;save();go();})();return;}
-  if(a==='bldF'){const f=S.floors.find(x=>x.name===P.f),v=prompt('이 층 도면이 속한 동을 입력하세요.\n('+S.blds.join(', ')+')',f.bld||'');if(v==null)return;f.bld=v.trim();save();return renderAll();}
+  if(a==='bldF'){const f=S.floors.find(x=>x.name===P.f),v=prompt('이 층 도면이 속한 동을 입력하세요.\n('+S.blds.join(', ')+')',plFB(f));if(v==null)return;f.bld=v.trim();save();return renderAll();}
   if(a==='delF'){const nm=P.f,cnt=S.nodes.filter(n=>n.floor===nm&&plOnF(n)).length;
     if(prompt(`"${nm}" 층 도면을 삭제해요.\n찍혀 있는 마커 ${cnt}개도 같이 지워져요 (트리 항목은 그대로예요).\n지우려면 "삭제"라고 입력하세요.`)!=='삭제')return;
     S.floors=S.floors.filter(f=>f.name!==nm);S.nodes.forEach(n=>{if(n.floor===nm){n.floor='';n.x='';n.y='';}});
