@@ -140,7 +140,7 @@ function ptNew(rm, c) {
 function ptSave() {
   const c = ptCfg(), r = PT.draft; if (!r) return;
   const num = v => v === '' || v == null ? '' : +v;
-  r.t = num(r.t); r.h = num(r.h); r.P.forEach(p => ['V', 'A', 'kW', 'PF'].forEach(k => { p[k] = num(p[k]); }));
+  r.t = num(r.t); r.h = num(r.h); r.P.forEach(p => { ['V', 'A', 'kW', 'PF'].forEach(k => { p[k] = num(p[k]); }); if (p.PF !== '' && p.PF > 1 && p.PF <= 100) p.PF = Math.round(p.PF) / 100; });   // 역률 88 → 0.88
   const miss = (r.items && Object.keys(r.items).filter(k => r.items[k] === 'bad' && !(r.im[k] || '').trim())) || [];
   if (miss.length && !confirm(`이상 항목에 메모가 없어요 (${miss.join(', ')}). 그냥 저장할까요?`)) return;
   r.who = ptWho(); r.d = r.d || ptToday(); r.ts = new Date().toISOString(); r.st = r.st || new Date(PT.start || Date.now()).toISOString(); r.qr = r.qr || PT.qr || 0;
@@ -162,15 +162,23 @@ function ptView() {
     ${PT.tab === 'set' ? ptSetH(c) : PT.tab === 'log' ? ptLogH(c) : ptTodayH(c)}</div>`;
 }
 function ptTodayH(c) {
-  const d = PT.day || ptToday();
-  const R = c.rooms.map(rm => ({rm, r: ptAll().filter(x => x.room === rm.id && x.d === d).pop()})), done = R.filter(x => x.r).length;
-  const late = d === ptToday() && new Date().getHours() >= 17;
-  return `<div class="ptDay"><input type="date" data-ptday value="${d}"> <b>${done}/${R.length} 완료</b>${late && done < R.length ? ' <span class="w">⚠ 17시 지남 · 미순찰 ' + (R.length - done) + '곳</span>' : ''}</div>
-    <div class="ptCards">${R.map(({rm, r}) => { const bad = r && (r.bad || []).length;
-      return `<div class="ptC${r ? bad ? ' bad' : ' ok' : ''}"><div class="h"><b>${esc(rm.name)}</b><span>${r ? `${bad ? '⚠' : '✔'} ${ptHM(r.ts)} · ${esc(r.who || '')}${r.qr ? ' · 📷QR' : ''}` : '○ 미순찰'}</span></div>
-        ${r ? `<div class="e">${r.t !== '' ? r.t + '℃' : '-'} · ${r.h !== '' ? r.h + '%' : '-'}</div>
-          <table>${(r.P || []).map(p => `<tr><td>${esc(p.n)}</td><td>${p.V}V</td><td>${p.A}A</td><td>${p.kW}kW</td><td>PF ${p.PF}</td></tr>`).join('')}</table>
-          ${bad ? `<div class="b">⚠ ${r.bad.map(esc).join(' · ')}</div>` : ''}${r.memo ? `<div class="m">📝 ${esc(r.memo)}</div>` : ''}` : ''}</div>`; }).join('')}</div>`;
+  const d = PT.day || ptToday(), prevOf = rid => ptAll().filter(r => r.room === rid && r.d < d).pop();
+  const R = c.rooms.map(rm => ({rm, r: ptAll().filter(x => x.room === rm.id && x.d === d).pop()})), done = R.filter(x => x.r).length, bad = R.filter(x => x.r && (x.r.bad || []).length).length;
+  const late = d === ptToday() && new Date().getHours() >= 17 && done < R.length;
+  const v = (val, u, isBad) => val === '' || val == null ? '<span class="nil">–</span>' : `<span${isBad ? ' class="bd"' : ''}>${esc(val)}${u}</span>`;
+  const rows = R.map(({rm, r}) => {
+    const nm = esc(rm.name.replace(/ 전기실$/, ''));
+    if (!r) return `<tr class="no"><td class="rm">${nm}</td><td colspan="8" class="nil">미순찰</td></tr>`;
+    const P = r.P && r.P.length ? r.P : [null], pr = prevOf(rm.id), n = P.length, B = r.bad || [];
+    return P.map((p, j) => `<tr class="${B.length ? 'bad' : ''}${j ? ' sub' : ''}">${j ? '' : `<td class="rm" rowspan="${n + (B.length || r.memo ? 1 : 0)}"><b>${nm}</b><small>${ptHM(r.ts)} · ${esc(r.who || '')}${r.qr ? ' · QR' : ''}</small></td>
+        <td rowspan="${n}" class="c">${v(r.t, '℃', ptFieldBad('t', r.t, c))}</td><td rowspan="${n}" class="c">${v(r.h, '%', ptFieldBad('h', r.h, c))}</td>`}
+      ${p ? `<td>${esc(p.n)}</td><td class="r">${v(p.V, '', ptFieldBad('V', p.V, c, p))}</td><td class="r">${v(p.A, '', ptFieldBad('A', p.A, c, p, pr))}</td><td class="r">${v(p.kW, '', false)}</td><td class="r">${v(p.PF, '', ptFieldBad('PF', p.PF, c, p))}</td>` : '<td colspan="5" class="nil">계측 반 없음</td>'}
+      ${j ? '' : `<td rowspan="${n}" class="st">${B.length ? '<span class="tg b">이상</span>' : '<span class="tg o">정상</span>'}</td>`}</tr>`).join('')
+      + (B.length || r.memo ? `<tr class="nt${B.length ? ' bad' : ''}"><td colspan="8">${B.length ? `<b>${B.map(esc).join(' · ')}</b>` : ''}${r.memo ? `${B.length ? '<br>' : ''}<span class="mm">메모: ${esc(r.memo)}</span>` : ''}</td></tr>` : '');
+  }).join('');
+  return `<div class="ptDay"><input type="date" data-ptday value="${d}"><span class="sum"><b>${done}</b>/${R.length} 완료${bad ? ` · <span class="bd">이상 ${bad}곳</span>` : ''}${done < R.length ? ` · 미순찰 ${R.length - done}곳${late ? ' <span class="bd">(17시 지남)</span>' : ''}` : ''}</span></div>
+    <table class="ptTd"><thead><tr><th>전기실</th><th>온도</th><th>습도</th><th>배전반</th><th class="r">V</th><th class="r">A</th><th class="r">kW</th><th class="r">PF</th><th>상태</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="mu" style="margin-top:6px;font-size:12px">빨간 값 = 기준 벗어남 (전압 ±${c.lim.vTol}% · 역률 ${c.lim.pfLo} 미만 · 온도 ${c.lim.tHi}℃ · 습도 ${c.lim.hHi}% 이상 · 전류 지난번보다 ${c.lim.aJump}% 이상 변화)</div>`;
 }
 function ptLogH(c) {
   const A = ptAll().slice().reverse().slice(0, 300);
@@ -475,6 +483,14 @@ body.ptOnly #mbNav button:not([data-mv="patrol"]),body.ptOnly #bldBar,body.ptOnl
 #view .ptBar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}#view .ptBar h2{margin:0 8px 0 0;color:#262f7d}#view .ptBar .sp{flex:1}#view .ptBar .mu{font-size:12px;color:#64748b}
 #view .ptBar button{padding:5px 11px;border:1px solid #d6dbe8;background:#fff;border-radius:6px;cursor:pointer;font-size:12.5px}#view .ptBar .seg button.on{background:#262f7d;color:#fff}
 #view .ptDay{margin-bottom:8px;font-size:14px}#view .ptDay .w{color:#c2410c;font-weight:700}
+#view .ptDay{display:flex;align-items:center;gap:12px}#view .ptDay input{font:inherit;font-size:13px;padding:3px 6px;border:1px solid #d6dbe8;border-radius:6px}#view .ptDay .sum{font-size:13.5px;color:#334155}#view .ptDay .sum b{font-size:15px}
+#view .ptTd{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #e5e7eb}
+#view .ptTd th{background:#f8fafc;color:#475569;font-weight:600;font-size:12px;text-align:left;padding:7px 10px;border-bottom:1px solid #e5e7eb}#view .ptTd th.r,#view .ptTd td.r{text-align:right;font-variant-numeric:tabular-nums}
+#view .ptTd td{padding:6px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle}#view .ptTd td.c{text-align:center;font-variant-numeric:tabular-nums}
+#view .ptTd td.rm{border-right:1px solid #f1f5f9;min-width:120px}#view .ptTd td.rm b{display:block;font-size:13.5px}#view .ptTd td.rm small{color:#64748b;font-size:11.5px}
+#view .ptTd tr.no td{color:#94a3b8}#view .ptTd tr.no td.rm{color:#64748b}#view .ptTd .nil{color:#cbd5e1}#view .ptTd .bd,#view .ptDay .bd{color:#dc2626;font-weight:700}
+#view .ptTd tr.nt td{font-size:12.5px;color:#475569;padding-top:2px}#view .ptTd tr.nt.bad td b{color:#b91c1c}#view .ptTd .mm{color:#64748b}
+#view .ptTd .tg{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:5px}#view .ptTd .tg.o{background:#f0fdf4;color:#15803d}#view .ptTd .tg.b{background:#fef2f2;color:#b91c1c}
 #view .ptCards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
 #view .ptC{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;font-size:12.5px}#view .ptC.ok{border-left:5px solid #16a34a}#view .ptC.bad{border-left:5px solid #dc2626;background:#fffbfb}#view .ptC:not(.ok):not(.bad){opacity:.7;border-left:5px solid #cbd5e1}
 #view .ptC .h{display:flex;justify-content:space-between;gap:6px;margin-bottom:4px}#view .ptC .h b{font-size:14px}#view .ptC .h span{color:#64748b}

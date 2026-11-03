@@ -25,12 +25,23 @@ function syMap() {
   return m;
 }
 // 마지막으로 맞춘 상태와 비교 → 바뀐 항목을 보낼 줄에
+// 최근 계통 변경 기록 (홈에 보여줌) · 이 기기에 60건까지
+const syNm = v => { try { const j = typeof v === 'string' ? JSON.parse(v) : v; return j ? [j.no, j.name].filter(Boolean).join(' ') || j.type || '' : ''; } catch (e) { return ''; } };
+function syLog(list) {
+  if (!list.length) return;
+  const L = syLS('log') || [], t = Date.now();
+  if (list.length > 20) L.unshift({t, by: list[0].by, a: '여러 개', nm: `항목 ${list.length}개 변경`, id: ''});
+  else list.forEach(x => L.unshift(Object.assign({t}, x)));
+  syLS('log', L.slice(0, 60));
+}
 function syDiff() {
   if (!SY.on || SY.applying || !SY.base) return 0;
   const m = syMap(), B = SY.base, t = Date.now(), by = syWho(); let n = 0;
   const put = (k, v) => { SY.q = SY.q.filter(o => o.k !== k); SY.q.push({k, v, t, by}); n++; };
-  Object.keys(m).forEach(k => { if (B[k] !== m[k]) { put(k, m[k]); B[k] = m[k]; } });
-  Object.keys(B).forEach(k => { if (!(k in m)) { put(k, null); delete B[k]; } });   // 지운 것
+  const lg = [];
+  Object.keys(m).forEach(k => { if (B[k] !== m[k]) { if (k.startsWith('n:')) lg.push({by, id: k.slice(2), a: B[k] === undefined ? '추가' : '수정', nm: syNm(m[k])}); put(k, m[k]); B[k] = m[k]; } });
+  Object.keys(B).forEach(k => { if (!(k in m)) { if (k.startsWith('n:')) lg.push({by, id: k.slice(2), a: '삭제', nm: syNm(B[k])}); put(k, null); delete B[k]; } });   // 지운 것
+  syLog(lg);
   if (n) syKeep();
   return n;
 }
@@ -39,10 +50,11 @@ function syApply(ops) {
   if (!ops.length) return 0;
   SY.applying = true; let n = 0;
   const pend = new Set(SY.q.map(o => o.k)), idx = new Map(S.nodes.map((x, i) => [x.id, i]));
-  const gone = new Set();
+  const gone = new Set(), lg = [];
   ops.forEach(o => {
     if (pend.has(o.k) || (SY.mine[o.k] && o.seq < SY.mine[o.k])) { SY.conf++; return; }   // 내 것이 더 나중 → 내 것 유지
     const v = o.v == null || o.v === '' ? null : JSON.parse(o.v), [ty, ...r] = o.k.split(':'), id = r.join(':');
+    if (ty === 'n') lg.push({by: o.by || '', id, a: !v ? '삭제' : idx.has(id) ? '수정' : '추가', nm: v ? syNm(v) : (idx.has(id) ? syNm(S.nodes[idx.get(id)]) : '')});
     if (ty === 'n') { if (v) { if (idx.has(id)) S.nodes[idx.get(id)] = v; else { S.nodes.push(v); idx.set(id, S.nodes.length - 1); } } else if (idx.has(id)) gone.add(id); }
     else if (ty === 'c') { if (v == null) delete S.cfg[id]; else S.cfg[id] = v; }
     else if (ty === 's') { if (v == null) delete S[id]; else S[id] = v; }
@@ -50,6 +62,7 @@ function syApply(ops) {
     n++;
   });
   if (gone.size) S.nodes = S.nodes.filter(x => !gone.has(x.id));
+  syLog(lg);
   dirty(); save(); SY.applying = false; syKeep();
   return n;
 }

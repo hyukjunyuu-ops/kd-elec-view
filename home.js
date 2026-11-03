@@ -4,7 +4,7 @@
    ② 확인할 것: 기준 초과(온도·습도·전압·역률) · 평소와 다름(최근 2주 중간값 ±20%) · 미조치 외관 이상 [조치 완료]
    ③ 배전반 상태: 순찰 계측 최근 값 + 2주 미니 그래프 · 누르면 30일 그래프
    ④ 전기실 온·습도 (7일)
-   ⑤ 계통 조사 진행 (동별) · 최근 본 반
+   ⑤ 최근 계통 변경 (3명이 고친 것 · 동기화 기록) · 최근 본 반
    조치 완료 기록은 S.cfg.ptAck → 계통 동기화로 3명이 같이 봐요
    ========================================================= */
 
@@ -106,7 +106,7 @@ homeView = function () {
   }));
   // ④ 온·습도
   const th = c.rooms.map(rm => { const A = (RD[rm.id] || []).filter(x => x.d >= hmDate(today, -6)), L = A[A.length - 1]; return {rm, A, L}; });
-  const sv = hmSurvey(), rec = thRecent().map(byId).filter(Boolean).slice(0, 6);
+  const lg = (typeof syLS === 'function' && syLS('log')) || [], rec = thRecent().map(byId).filter(Boolean).slice(0, 6);
   const bkDays = typeof BK !== 'undefined' && BK.t ? Math.floor((Date.now() - BK.t) / 864e5) : -1, sy = document.getElementById('syncSt');
   const nm = rm => esc(rm.name.replace(/ 전기실$/, ''));
   const f = v => hmNum(v) ? esc(v) : '<span class="hmNo">—</span>';
@@ -132,9 +132,10 @@ homeView = function () {
       <div class="hmTh">${th.map(({rm, A, L}) => { const hot = L && hmNum(L.r.t) && +L.r.t >= c.lim.tHi;
         return `<div class="hmTc${hot ? ' hot' : ''}" data-hmroom="${esc(rm.id)}"><b>${nm(rm)}</b><div class="v">${L && hmNum(L.r.t) ? `<em>${esc(L.r.t)}℃</em>` : '<span class="hmNo">최근 7일 기록 없음</span>'}${L && hmNum(L.r.h) ? ` <small>${esc(L.r.h)}%</small>` : ''}</div>${L ? hmSpark(A.map(x => x.r.t), 110, 22, hot ? '#dc2626' : '#0f766e', c.lim.tHi) : ''}</div>`; }).join('')}</div></div>
 
-    <div class="thTwo"><div class="thC"><div class="thCh"><b>계통 조사 진행</b><span class="sp"></span><span class="mu">회로 이름·정격·형식 입력률</span></div>
-      ${sv.length ? sv.map(({b, o, pc}) => `<div class="hmSv"><b>${esc(b)}</b><span class="hmSb"><i style="width:${pc}%;background:${pc >= 90 ? 'var(--ok)' : pc >= 60 ? '#3b82f6' : '#f59e0b'}"></i></span><em>${pc}%</em>
-        <small>회로 ${o.c} · 이름 ${o.c ? Math.round(o.nm / o.c * 100) : 0}% · 정격 ${o.c ? Math.round(o.rt / o.c * 100) : 0}% · 형식 ${o.c ? Math.round(o.ty / o.c * 100) : 0}% · 반 위치 ${o.loc}/${o.p}</small></div>`).join('') : '<div class="mu" style="padding:12px 0">아직 계통 데이터가 없어요.</div>'}</div>
+    <div class="thTwo"><div class="thC"><div class="thCh"><b>최근 계통 변경</b><span class="sp"></span><span class="mu">누가 무엇을 고쳤나</span></div>
+      ${lg.length ? lg.slice(0, 10).map(x => { const n = x.id && byId(x.id), t = new Date(x.t), when = `${t.getMonth() + 1}/${t.getDate()} ${ptHM(x.t)}`;
+        return `<div class="hmLg${n ? '" data-hgo="' + esc(n.id) : ''}"><span class="a a${x.a === '삭제' ? 'd' : x.a === '추가' ? 'n' : 'm'}">${esc(x.a)}</span><div class="s"><b>${esc(n ? label(n) : x.nm || '(이름 없음)')}</b><small>${n ? esc(bk(n)) + ' · ' : ''}${when}${x.by ? ' · ' + esc(x.by) : ''}</small></div></div>`; }).join('')
+        : `<div class="mu" style="padding:12px 0">${typeof SY !== 'undefined' && SY.on ? '아직 바뀐 게 없어요. 고치면 여기 쌓여요 (다른 사람이 고친 것도).' : '계통 동기화를 켜면 3명이 고친 내용이 여기 쌓여요.'}</div>`}</div>
       <div class="thC"><div class="thCh"><b>최근 본 반</b></div>
         ${rec.length ? rec.map(n => { const K = typeof pvKindOf === 'function' ? pvKindOf(n) : {l: n.type, c: '#475569'};
           return `<div class="thLi" data-hgo="${esc(n.id)}"><span class="thTy" style="color:${K.c};background:${K.c}18">${esc(K.l)}</span><div class="s"><b>${esc(label(n))}</b><small>${esc(bk(n))} · 회로 ${kids(n.id).filter(k => !isSlot(k)).length}</small></div></div>`; }).join('')
@@ -174,6 +175,9 @@ document.addEventListener('click', e => {
 .hm .hmTh{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
 .hm .hmTc{border:1px solid var(--ln);border-radius:12px;padding:8px 10px;cursor:pointer}.hm .hmTc:hover{border-color:#c7d2fe}.hm .hmTc.hot{border-color:#fca5a5;background:#fef2f2}
 .hm .hmTc b{font-size:12.5px}.hm .hmTc .v em{font-style:normal;font-size:18px;font-weight:800}.hm .hmTc.hot .v em{color:#dc2626}.hm .hmTc .v small{color:var(--mu)}
+.hm .hmLg{display:flex;align-items:center;gap:10px;padding:7px 4px;border-top:1px solid var(--ln)}.hm .hmLg:first-of-type{border-top:0}.hm .hmLg[data-hgo]{cursor:pointer}.hm .hmLg[data-hgo]:hover{background:#f8f9fd}
+.hm .hmLg .a{font-size:11px;font-weight:700;border-radius:5px;padding:1px 6px;flex:none}.hm .hmLg .am{background:#eef2ff;color:#3730a3}.hm .hmLg .an{background:#dcfce7;color:#166534}.hm .hmLg .ad{background:#fee2e2;color:#991b1b}
+.hm .hmLg .s{flex:1;min-width:0}.hm .hmLg b{font-size:13px}.hm .hmLg small{display:block;color:var(--mu);font-size:11.5px}
 .hm .hmSv{display:grid;grid-template-columns:80px 1fr 40px;align-items:center;gap:4px 10px;padding:7px 0;border-top:1px solid var(--ln)}.hm .hmSv:first-of-type{border-top:0}
 .hm .hmSv b{font-size:13px}.hm .hmSv em{font-style:normal;font-weight:800;font-size:13px;text-align:right}.hm .hmSv small{grid-column:1/-1;color:var(--mu);font-size:11.5px}
 .hm .hmSb{height:8px;background:var(--bg);border-radius:5px;overflow:hidden}.hm .hmSb i{display:block;height:100%}
