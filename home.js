@@ -4,11 +4,29 @@
    ② 확인할 것: 기준 초과(온도·습도·전압·역률) · 평소와 다름(최근 2주 중간값 ±20%) · 미조치 외관 이상 [조치 완료]
    ③ 배전반 상태: 순찰 계측 최근 값 + 2주 미니 그래프 · 누르면 30일 그래프
    ④ 전기실 온·습도 (7일)
-   ⑤ 최근 계통 변경 (3명이 고친 것 · 동기화 기록) · 최근 본 반
+   ⑤ 전달 사항 (인수인계 메모판 · 3명 공유) · 최근 본 반
+   전달 사항은 S.cfg['mm_<id>']마다 하나씩 → 계통 동기화로 항목별 합치기 (둘이 동시에 써도 안 사라짐)
    조치 완료 기록은 S.cfg.ptAck → 계통 동기화로 3명이 같이 봐요
    ========================================================= */
 
-const HM = {open: '', k: 'kW', dev: 20};
+const HM = {open: '', k: 'kW', dev: 20, write: false, showDone: false, link: true};
+// 전달 사항
+const mmAll = () => Object.keys(S.cfg || {}).filter(k => k.startsWith('mm_')).map(k => S.cfg[k]).filter(Boolean);
+const mmWho = () => (typeof ptWho === 'function' && ptWho()) || (typeof syWho === 'function' && syWho()) || '';
+const mmWhen = t => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${ptHM(t)}`; };
+function mmH() {
+  const A = mmAll(), act = A.filter(m => !m.done).sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0) || b.t - a.t), dn = A.filter(m => m.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+  const sel = byId(UI.sel);
+  const row = m => { const n = m.nid && byId(m.nid);
+    return `<div class="mmR${m.pin ? ' pin' : ''}${m.done ? ' dn' : ''}"><button class="pn" data-mmpin="${esc(m.id)}" title="${m.pin ? '고정 풀기' : '위에 고정'}">${m.pin ? '📌' : '·'}</button>
+      <div class="s"><div class="tx">${esc(m.txt).replace(/\n/g, '<br>')}</div><small>${esc(m.by || '')} · ${mmWhen(m.t)}${n ? ` · <a data-hgo="${esc(n.id)}">${esc(label(n))}</a>` : ''}${m.done ? ` · ✔ ${esc(m.doneBy || '')} ${mmWhen(m.doneAt)}` : ''}</small></div>
+      <button class="ok" data-mmdone="${esc(m.id)}">${m.done ? '되살리기' : '완료'}</button><button class="x" data-mmdel="${esc(m.id)}" title="지우기">✕</button></div>`; };
+  return `<div class="thC hmMm"><div class="thCh"><b>전달 사항</b>${act.length ? ` <span class="hmCnt">${act.length}</span>` : ''}<span class="sp"></span><button class="mmW" data-mmw="1">${HM.write ? '닫기' : '+ 쓰기'}</button></div>
+    ${HM.write ? `<div class="mmF"><textarea id="mmTx" rows="2" placeholder="예) LV-303-B 3번 차단기 발열 — 다음 주 교체 예정"></textarea>
+      <div class="b"><label><input type="checkbox" id="mmPin"> 📌 위에 고정</label>${sel ? `<label><input type="checkbox" id="mmLk"${HM.link ? ' checked' : ''}> 연결: <b>${esc(label(sel))}</b></label>` : '<span class="mu">트리에서 반·설비를 고르고 쓰면 연결돼요</span>'}<span class="sp"></span><button class="pri" data-mmadd="1">등록</button></div></div>` : ''}
+    ${act.length ? act.slice(0, 10).map(row).join('') : `<div class="mu" style="padding:12px 2px">전달할 게 없어요. 교대·출장 전에 알려야 할 걸 남겨두세요.</div>`}
+    ${dn.length ? `<div class="mmD"><a data-mmshow="1">${HM.showDone ? '▾' : '▸'} 완료 ${dn.length}건</a></div>${HM.showDone ? dn.slice(0, 10).map(row).join('') : ''}` : ''}</div>`;
+}
 const hmNum = v => v !== '' && v != null && !isNaN(+v);
 const hmMed = a => { const s = a.filter(Number.isFinite).sort((x, y) => x - y), n = s.length; return !n ? NaN : n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; };
 const hmDate = (d, k) => { const t = new Date(d + 'T00:00:00'); t.setDate(t.getDate() + k); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
@@ -132,10 +150,7 @@ homeView = function () {
       <div class="hmTh">${th.map(({rm, A, L}) => { const hot = L && hmNum(L.r.t) && +L.r.t >= c.lim.tHi;
         return `<div class="hmTc${hot ? ' hot' : ''}" data-hmroom="${esc(rm.id)}"><b>${nm(rm)}</b><div class="v">${L && hmNum(L.r.t) ? `<em>${esc(L.r.t)}℃</em>` : '<span class="hmNo">최근 7일 기록 없음</span>'}${L && hmNum(L.r.h) ? ` <small>${esc(L.r.h)}%</small>` : ''}</div>${L ? hmSpark(A.map(x => x.r.t), 110, 22, hot ? '#dc2626' : '#0f766e', c.lim.tHi) : ''}</div>`; }).join('')}</div></div>
 
-    <div class="thTwo"><div class="thC"><div class="thCh"><b>최근 계통 변경</b><span class="sp"></span><span class="mu">누가 무엇을 고쳤나</span></div>
-      ${lg.length ? lg.slice(0, 10).map(x => { const n = x.id && byId(x.id), t = new Date(x.t), when = `${t.getMonth() + 1}/${t.getDate()} ${ptHM(x.t)}`;
-        return `<div class="hmLg${n ? '" data-hgo="' + esc(n.id) : ''}"><span class="a a${x.a === '삭제' ? 'd' : x.a === '추가' ? 'n' : 'm'}">${esc(x.a)}</span><div class="s"><b>${esc(n ? label(n) : x.nm || '(이름 없음)')}</b><small>${n ? esc(bk(n)) + ' · ' : ''}${when}${x.by ? ' · ' + esc(x.by) : ''}</small></div></div>`; }).join('')
-        : `<div class="mu" style="padding:12px 0">${typeof SY !== 'undefined' && SY.on ? '아직 바뀐 게 없어요. 고치면 여기 쌓여요 (다른 사람이 고친 것도).' : '계통 동기화를 켜면 3명이 고친 내용이 여기 쌓여요.'}</div>`}</div>
+    <div class="thTwo">${mmH()}
       <div class="thC"><div class="thCh"><b>최근 본 반</b></div>
         ${rec.length ? rec.map(n => { const K = typeof pvKindOf === 'function' ? pvKindOf(n) : {l: n.type, c: '#475569'};
           return `<div class="thLi" data-hgo="${esc(n.id)}"><span class="thTy" style="color:${K.c};background:${K.c}18">${esc(K.l)}</span><div class="s"><b>${esc(label(n))}</b><small>${esc(bk(n))} · 회로 ${kids(n.id).filter(k => !isSlot(k)).length}</small></div></div>`; }).join('')
@@ -145,6 +160,18 @@ homeView = function () {
 
 document.addEventListener('click', e => {
   const t = e.target; if (!t.closest || !t.closest('.hm')) return;
+  // 전달 사항
+  const mm = (sel, f) => { const b = t.closest(sel); if (!b) return false; e.preventDefault(); e.stopPropagation(); f(b); return true; };
+  const put = m => { S.cfg['mm_' + m.id] = m; save(); renderView(); };
+  if (mm('[data-mmw]', () => { HM.write = !HM.write; renderView(); setTimeout(() => { const x = document.getElementById('mmTx'); if (x) x.focus(); }, 0); })) return;
+  if (mm('[data-mmshow]', () => { HM.showDone = !HM.showDone; renderView(); })) return;
+  if (mm('[data-mmadd]', () => { const tx = (document.getElementById('mmTx') || {}).value || ''; if (!tx.trim()) return alert('내용을 쓰세요.');
+    const lk = document.getElementById('mmLk'), sel = byId(UI.sel); if (lk) HM.link = lk.checked;
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    HM.write = false; put({id, t: Date.now(), by: mmWho(), txt: tx.trim(), pin: !!(document.getElementById('mmPin') || {}).checked, nid: lk && lk.checked && sel ? sel.id : '', done: false}); toast('전달 사항을 남겼어요.', false); })) return;
+  if (mm('[data-mmpin]', b => { const m = S.cfg['mm_' + b.dataset.mmpin]; if (m) put(Object.assign({}, m, {pin: !m.pin})); })) return;
+  if (mm('[data-mmdone]', b => { const m = S.cfg['mm_' + b.dataset.mmdone]; if (m) put(Object.assign({}, m, m.done ? {done: false} : {done: true, doneBy: mmWho(), doneAt: Date.now(), pin: false})); })) return;
+  if (mm('[data-mmdel]', b => { const m = S.cfg['mm_' + b.dataset.mmdel]; if (m && confirm('이 전달 사항을 지울까요?')) { delete S.cfg['mm_' + m.id]; save(); renderView(); } })) return;
   const a = t.closest('[data-hmack]');
   if (a) { e.preventDefault(); e.stopPropagation(); const m = prompt('조치 내용 (선택 · 비워도 돼요)', ''); if (m === null) return;
     hmAck()[a.dataset.hmack] = {by: (typeof ptWho === 'function' && ptWho()) || (typeof syWho === 'function' && syWho()) || '', at: Date.now(), m: m.trim()}; save(); renderView(); toast('조치 완료로 기록했어요.', false); return; }
@@ -175,6 +202,14 @@ document.addEventListener('click', e => {
 .hm .hmTh{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
 .hm .hmTc{border:1px solid var(--ln);border-radius:12px;padding:8px 10px;cursor:pointer}.hm .hmTc:hover{border-color:#c7d2fe}.hm .hmTc.hot{border-color:#fca5a5;background:#fef2f2}
 .hm .hmTc b{font-size:12.5px}.hm .hmTc .v em{font-style:normal;font-size:18px;font-weight:800}.hm .hmTc.hot .v em{color:#dc2626}.hm .hmTc .v small{color:var(--mu)}
+.hm .hmMm .mmW{padding:3px 11px;border:1px solid #c7d2fe;background:#fff;color:#262f7d;border-radius:7px;font-size:12px;cursor:pointer}
+.hm .mmF{border:1px solid #c7d2fe;border-radius:10px;padding:8px;margin-bottom:6px;background:#f8faff}.hm .mmF textarea{width:100%;box-sizing:border-box;font:inherit;font-size:13.5px;border:1px solid #d6dbe8;border-radius:7px;padding:7px 9px;resize:vertical}
+.hm .mmF .b{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;color:#475569}.hm .mmF .sp{flex:1}.hm .mmF .pri{padding:5px 16px;border:0;border-radius:7px;background:#262f7d;color:#fff;cursor:pointer;font-size:13px}
+.hm .mmR{display:flex;align-items:flex-start;gap:8px;padding:8px 2px;border-top:1px solid var(--ln)}.hm .mmR:first-of-type{border-top:0}.hm .mmR.pin{background:#fffbeb}.hm .mmR.dn .tx{color:#94a3b8;text-decoration:line-through}
+.hm .mmR .pn{border:0;background:none;cursor:pointer;font-size:14px;width:22px;color:#cbd5e1;padding:0;line-height:1.4}.hm .mmR .s{flex:1;min-width:0}.hm .mmR .tx{font-size:13.5px;line-height:1.45;word-break:keep-all}
+.hm .mmR small{display:block;color:var(--mu);font-size:11.5px;margin-top:2px}.hm .mmR small a{color:#262f7d;cursor:pointer;text-decoration:underline}
+.hm .mmR .ok{padding:2px 9px;border:1px solid #d6dbe8;background:#fff;border-radius:6px;font-size:11.5px;cursor:pointer;flex:none}.hm .mmR .ok:hover{border-color:#16a34a;color:#15803d}
+.hm .mmR .x{border:0;background:none;color:#cbd5e1;cursor:pointer;font-size:12px;flex:none}.hm .mmR .x:hover{color:#dc2626}.hm .mmD{padding:6px 2px 0;font-size:12px}.hm .mmD a{color:#64748b;cursor:pointer}
 .hm .hmLg{display:flex;align-items:center;gap:10px;padding:7px 4px;border-top:1px solid var(--ln)}.hm .hmLg:first-of-type{border-top:0}.hm .hmLg[data-hgo]{cursor:pointer}.hm .hmLg[data-hgo]:hover{background:#f8f9fd}
 .hm .hmLg .a{font-size:11px;font-weight:700;border-radius:5px;padding:1px 6px;flex:none}.hm .hmLg .am{background:#eef2ff;color:#3730a3}.hm .hmLg .an{background:#dcfce7;color:#166534}.hm .hmLg .ad{background:#fee2e2;color:#991b1b}
 .hm .hmLg .s{flex:1;min-width:0}.hm .hmLg b{font-size:13px}.hm .hmLg small{display:block;color:var(--mu);font-size:11.5px}
