@@ -197,7 +197,7 @@ function mapSvg(opt) {
   MAP_BLD.forEach(b => {
     const bld = mapBldOf(b.id), n = cnt[bld] || 0;
     const s = {black, em: emN[bld] > 0, lit: !black && n > 0 && !cutOf(bld), sel: !OUT && MAP.selB === b.id, cut: cutOf(bld), part: partOf(bld)};
-    b.blocks.forEach(kb => items.push({y: kb.r[3], x: kb.r[0], svg: `<g class="mpB" data-mpb="${b.id}" style="cursor:pointer">${mapBlock(kb, s)}</g>`}));
+    b.blocks.forEach(kb => items.push({y: kb.r[3], x: kb.r[0], svg: `<g class="mpB" data-mpb="${b.id}" style="cursor:pointer"${OUT && !s.cut && !s.part ? ' opacity=".5"' : ''}>${mapBlock(kb, s)}</g>`}));
   });
   MAP_TREES.forEach(([x, y, r]) => items.push({y, x, svg: mapTree(x, y, r, {black})}));
   // 한전 철탑
@@ -214,7 +214,10 @@ function mapSvg(opt) {
   const DT = FOC && !OUT ? mapDetail(mapBldOf(MAP.selB), FOC) : null;
   // 같은 두 동 사이에 전압이 여러 개면 곡선 높이를 조금씩 달리
   const nth = {};
-  edges.forEach(e => {
+  // 정전 그림: 회선마다 정전/일부/정상 · 정상 선은 흐리게, 정전 선은 빨갛게 위에
+  const eSt = e => { if (!OUT) return ''; const ids = new Set(e.f.map(f => f.p && f.p.id)), dead = new Set(e.f.filter(f => !P.alive.has(f.n.id)).map(f => f.p && f.p.id));
+    return {all: ids.size, dead: dead.size, k: !dead.size ? 'ok' : dead.size >= ids.size ? 'dead' : 'part'}; };
+  (OUT ? [...edges].sort((a, b) => ({ok: 0, part: 1, dead: 2})[eSt(a).k] - ({ok: 0, part: 1, dead: 2})[eSt(b).k]) : edges).forEach(e => {
     const foc = FOC && FOC.pairs.has(e.a + '>' + e.b);
     if (!OUT && !foc && !MAP.lay[e.cls]) return;          // 꺼 둔 레이어
     if (DT && DT.pairs.has(e.a + '>' + e.b)) return;       // 한 가닥씩 따로 그림
@@ -222,6 +225,16 @@ function mapSvg(opt) {
     const cx = (A[0] + B[0]) / 2, cy = Math.min(A[1], B[1]) - 40 - dist * .22 - (j - 1) * 26;
     const c = fpLineCol(e.f[0].n), w = 4 + Math.min(5, new Set(e.f.map(f => f.p && f.p.id)).size) * 1.6, on = !black && !(OUT && e.f.every(f => !P.alive.has(f.n.id)));
     const d = `M${A[0]} ${A[1]} Q${cx} ${cy} ${B[0]} ${B[1]}`;
+    if (OUT) {   // 계획정전 그림
+      const q = eSt(e), red = q.k === 'dead' ? '#dc2626' : '#f97316', ww = w + 3;
+      if (q.k === 'ok') { o.push(`<g class="mpE" pointer-events="none" opacity=".35"><path d="${d}" fill="none" stroke="#94a3b8" stroke-width="${Math.max(2.5, w * .6)}" stroke-linecap="round"/></g>`); return; }
+      const mx = (A[0] + 2 * cx + B[0]) / 4, my = (A[1] + 2 * cy + B[1]) / 4;
+      o.push(`<g class="mpE" pointer-events="none"><path d="${d}" fill="none" stroke="${red}" stroke-width="${ww + 12}" stroke-linecap="round" opacity=".18"/><path d="${d}" fill="none" stroke="#fff" stroke-width="${ww + 4}" stroke-linecap="round"/>`,
+        `<path d="${d}" fill="none" stroke="${red}" stroke-width="${ww}" stroke-linecap="round" stroke-dasharray="14 8"/><circle cx="${B[0]}" cy="${B[1]}" r="${ww / 2 + 3}" fill="${red}" stroke="#fff" stroke-width="2"/></g>`);
+      const tx = `⛔ ${e.v} ${q.k === 'dead' ? '정전' : `${q.dead}/${q.all}회선 정전`}`;
+      tags.push(`<g class="mpE" pointer-events="none"><rect x="${mx - tx.length * 4.3 - 10}" y="${my - 13}" width="${tx.length * 8.6 + 20}" height="25" rx="12.5" fill="${red}" stroke="#fff" stroke-width="2"/><text x="${mx}" y="${my + 4.5}" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#fff">${esc(tx)}</text></g>`);
+      return;
+    }
     const op = FOC && !foc ? .1 : on ? 1 : .3;
     o.push(`<g class="mpE" pointer-events="none" opacity="${op}"><path d="${d}" fill="none" stroke="#fff" stroke-width="${w + 5}" stroke-linecap="round" opacity=".85"/>`,
       `<path d="${d}" fill="none" stroke="${on ? c.c : '#9ca3af'}" stroke-width="${w}" stroke-linecap="round"/>`,
@@ -237,7 +250,7 @@ function mapSvg(opt) {
   MAP_BLD.forEach(b => {
     const bld = mapBldOf(b.id), nm = mapName(b), n = cnt[bld] || 0, em = emN[bld] > 0;
     const [x, y] = mP((b.x0 + b.x1) / 2, b.y1, b.h);
-    const sub = b.small ? '' : OUT ? (cutOf(bld) ? `⛔ 정전 · 분전반 ${dP[bld] || 0}` : partOf(bld) ? `⚠ 일부 정전 · 분전반 ${dP[bld] || 0}/${pnl[bld] || 0}개 정전` : n ? '정상' : '')
+    const sub = b.small ? '' : OUT ? (cutOf(bld) ? `⛔ 정전 · 분전반 ${dP[bld] || 0}` : partOf(bld) ? (pnl[bld] && dP[bld] >= pnl[bld] ? `⚠ 분전반 전체 정전 (${pnl[bld]}개)` : `⚠ 일부 정전 · 분전반 ${dP[bld] || 0}/${pnl[bld] || 0}개`) : n ? '정상' : '')
       : em ? `⚡ 비상 전원 ${emN[bld]}곳` : black ? '정전' : '';
     const fs = b.small ? 11.5 : 14, w = Math.max(nm.length * fs + 26, sub.length * 7 + 16), hgt = sub ? 36 : 22;
     LB[b.id] = {b, bld, nm, n, em, x, ly: y - (b.small ? 30 : sub ? 46 : 34), w, hgt, sub, fs, cut: cutOf(bld), part: partOf(bld), dim: FOC && !FOC.blds.has(bld)};
@@ -256,7 +269,7 @@ function mapSvg(opt) {
     if (!OUT && !(FOC ? FOC.srcs.includes(n) : MAP.lay.em || feed)) return;
     const A = SP.get(n.id), B = top(tb), run = P.src[n.id] === 'run' && feed;
     const d = `M${A.x} ${A.y} Q${(A.x + B[0]) / 2} ${Math.min(A.y, B[1]) - 50} ${B[0]} ${B[1]}`;
-    o.push(`<path pointer-events="none" d="${d}" fill="none" stroke="${run ? '#dc2626' : '#fca5a5'}" stroke-width="${run ? 6 : 2.5}" stroke-dasharray="${run ? '14 9' : '6 6'}" stroke-linecap="round">${run ? '<animate attributeName="stroke-dashoffset" from="46" to="0" dur="1s" repeatCount="indefinite"/>' : ''}</path>`);
+    o.push(`<path pointer-events="none" d="${d}"${OUT ? ' opacity=".3"' : ''} fill="none" stroke="${run ? '#dc2626' : '#fca5a5'}" stroke-width="${run ? 6 : 2.5}" stroke-dasharray="${run ? '14 9' : '6 6'}" stroke-linecap="round">${run ? '<animate attributeName="stroke-dashoffset" from="46" to="0" dur="1s" repeatCount="indefinite"/>' : ''}</path>`);
   });
   // 선 꼬리표 → 건물 이름표 → 설비 (위로 갈수록 나중에)
   if (DT) o.push(mapDetailSvg(DT, top, black));
