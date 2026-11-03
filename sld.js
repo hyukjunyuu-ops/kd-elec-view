@@ -35,6 +35,13 @@ function sdLayout() {
     const o = {n, d, kids: [], srcs: srcOf.get(n.id) || []};
     V.set(n.id, o);
     if (!SD_STOP[n.type]) o.kids = kids(n.id).filter(k => !FP_SRC[k.type]).map(k => build(k, d + 1));
+    o.kids.forEach(k => { k.p = o; });
+    // 같은 동으로 가는 피더끼리 옆으로 모으기 (동 상자가 조각나지 않게) · 그 안에서는 원래 순서
+    if (o.kids.length > 1) {
+      const pb = effBld(n), dest = k => { const st = [k]; while (st.length) { const q = st.shift(), b = effBld(q.n); if (b && b !== pb) return b; st.push(...q.kids); } return ''; };
+      const ord = []; o.kids.forEach(k => { k.dst = dest(k); if (!ord.includes(k.dst)) ord.push(k.dst); });
+      o.kids = ord.flatMap(b => o.kids.filter(k => k.dst === b));
+    }
     return o;
   }
   const roots = kids('').filter(n => !FP_SRC[n.type]).map(n => build(n, 0));
@@ -43,7 +50,7 @@ function sdLayout() {
   const wid = o => { o.kw = o.kids.reduce((s, k) => s + wid(k), 0); o.w = Math.max(SD_COL, o.kw) + (o.srcs.length ? o.srcs.length * SD_COL + 14 : 0); return o.w; };
   const nodes = [];
   function place(o, x0) {
-    o.y = SD_TOP + o.d * SD_ROW;
+    o.y = SD_TOP + o.d * SD_ROW; o.x0 = x0;
     let cx = x0;
     o.kids.forEach(k => { place(k, cx); cx += k.w; });
     o.x = o.kids.length ? (o.kids[0].x + o.kids[o.kids.length - 1].x) / 2 : x0 + SD_COL / 2;
@@ -52,8 +59,14 @@ function sdLayout() {
   }
   let x = 30;
   roots.forEach(o => { wid(o); place(o, x); x += o.w + 10; });
-  const W = Math.max(600, x + 40), H = Math.max(300, ...nodes.map(o => o.y + (o.kids.length ? 40 : 110)));
-  return {roots, nodes, V, W, H, outside};
+  // 동 상자: 위쪽 반과 동이 바뀌는 곳(예: 유틸리티동 VCB → 본동 TR)부터 그 아래 전부 · 옆으로 붙은 같은 동은 하나로
+  const bot = o => Math.max(o.y, ...o.kids.map(bot));
+  const rb = roots.length ? effBld(roots[0].n) : '', bx = nodes.filter(o => effBld(o.n) && effBld(o.n) !== (o.p ? effBld(o.p.n) : rb))
+    .map(o => ({b: effBld(o.n), x1: o.x0 + 3, x2: o.x0 + o.w - 3, y1: o.y - 50, y2: bot(o) + 80, e: o}))
+    .sort((a, c) => a.y1 - c.y1 || a.x1 - c.x1), boxes = [];
+  bx.forEach(r => { const m = boxes.find(q => q.b === r.b && q.y1 === r.y1 && r.x1 - q.x2 <= 10 && r.x1 >= q.x1); if (m) { m.x2 = Math.max(m.x2, r.x2); m.y2 = Math.max(m.y2, r.y2); } else boxes.push(Object.assign({}, r)); });
+  const W = Math.max(600, x + 40), H = Math.max(300, ...nodes.map(o => o.y + (o.kids.length ? 40 : 110)), ...boxes.map(q => q.y2 + 10));
+  return {roots, nodes, V, W, H, outside, boxes};
 }
 
 /* ---------- 기호 ---------- */
@@ -108,6 +121,10 @@ function sdSvg(L, forPng) {
   if (sn) { vis = pathOf(sn).reverse().find(x => L.V.has(x.id)); if (vis) pathOf(vis).forEach(x => path.add(x.id)); }
   o.push(`<svg xmlns="http://www.w3.org/2000/svg" id="sdSvg" viewBox="0 0 ${L.W} ${L.H}" width="${Math.round(L.W * z)}" height="${Math.round(L.H * z)}" font-family="Malgun Gothic,sans-serif">`,
     `<rect class="sdBg" width="${L.W}" height="${L.H}" fill="#fff"/>`, typeof BV_DEFS === 'string' ? BV_DEFS.replace('</defs>', '<filter id="sdGray"><feColorMatrix type="saturate" values="0"/></filter></defs>') : '');
+  // 동 상자 (유틸리티동은 바탕 그대로, 다른 동만) — 맨 뒤에
+  (L.boxes || []).forEach(q => { const c = fpBcol(q.b), w = q.b.length * 12 + 12;
+    o.push(`<g class="sdBx"><rect x="${q.x1}" y="${q.y1}" width="${q.x2 - q.x1}" height="${q.y2 - q.y1}" rx="14" fill="${c}" fill-opacity=".07" stroke="${c}" stroke-opacity=".55" stroke-width="1.6"/>`,
+      `<rect x="${q.x1}" y="${q.y1}" width="${w}" height="20" rx="10" fill="${c}"/><text x="${q.x1 + w / 2}" y="${q.y1 + 14}" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">${esc(q.b)}</text></g>`); });
   const col = n => dead(n.id) ? {c: '#cbd5e1', d: '', w: 2.2} : em(n.id) ? {c: '#dc2626', d: '9 6', w: 3.4} : fpLineCol(n);
   const seg = (x1, y1, x2, y2, c, hl, w) => `${hl && !forPng ? `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#fde047" stroke-width="${(w || c.w) + 7}" stroke-linecap="round"/>` : ''}<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c.c}" stroke-width="${w || c.w}"${c.d ? ` stroke-dasharray="${c.d}"` : ''} stroke-linecap="square">${c.c === '#dc2626' && c.d ? '<animate attributeName="stroke-dashoffset" from="30" to="0" dur="1s" repeatCount="indefinite"/>' : ''}</line>`;
 
@@ -135,7 +152,7 @@ function sdSvg(L, forPng) {
       o.push(seg(k.x, by, k.x, top, col(k.n), path.has(k.n.id)));
       // 동이 바뀌는 곳
       const kb = effBld(k.n), pb = effBld(p.n);
-      if (kb && kb !== pb) { const t = kb, w = t.length * 11 + 16; o.push(`<rect x="${k.x - w - 5}" y="${by + 6}" width="${w}" height="16" rx="8" fill="${fpBcol(kb)}"/><text x="${k.x - w / 2 - 5}" y="${by + 18}" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#fff">${esc(t)}</text>`); }
+      if (kb && kb !== pb && !(L.boxes || []).length) { const t = kb, w = t.length * 11 + 16; o.push(`<rect x="${k.x - w - 5}" y="${by + 6}" width="${w}" height="16" rx="8" fill="${fpBcol(kb)}"/><text x="${k.x - w / 2 - 5}" y="${by + 18}" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#fff">${esc(t)}</text>`); }
     });
   });
   // 같은 줄에서 오른쪽 이웃 기호까지 남은 폭 (이름이 넘어가지 않게)
