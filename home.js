@@ -139,12 +139,12 @@ homeView = function () {
         : `<div class="hmOk">✔ 확인할 것 없음 <span class="mu">— 최근 순찰 값이 모두 기준 안이고 미조치 이상도 없어요</span></div>`}</div>
 
     <div class="thC"><div class="thCh"><b>배전반 상태</b><span class="mu" style="margin-left:6px">순찰 계측 · 최근 값</span><span class="sp"></span><span class="mu">행을 누르면 30일 그래프</span></div>
-      ${rows.length ? `<table class="hmT"><thead><tr><th>반</th><th>전기실</th><th>V</th><th>A</th><th>kW</th><th>PF</th><th>최근 2주</th><th>변화</th></tr></thead><tbody>${rows.map(x => {
+      ${rows.length ? `<div class="hmTw"><table class="hmT"><thead><tr><th>반</th><th>전기실</th><th>V</th><th>A</th><th>kW</th><th>PF</th><th>최근 2주</th><th>변화</th></tr></thead><tbody>${rows.map(x => {
         const L = x.L || {}, old = x.L && x.L.d < hmDate(today, -2), pfBad = hmNum(L.PF) && +L.PF > 0 && +L.PF < c.lim.pfLo;
         return `<tr data-hmrow="${esc(x.key)}" class="${HM.open === x.key ? 'on' : ''}"><td><b>${esc(x.p.n)}</b></td><td>${nm(x.rm)}${old ? ` <span class="hmNo">${hmMD(x.L.d)}</span>` : ''}</td><td>${f(L.V)}</td><td>${f(L.A)}</td><td>${f(L.kW)}</td><td${pfBad ? ' class="bad"' : ''}>${f(L.PF)}</td>
           <td>${hmSpark(x.S14.map(y => y[x.k]), 96, 22, '#262f7d')} <span class="hmNo">${x.k}</span></td><td class="${x.ch == null ? '' : Math.abs(x.ch) >= HM.dev ? 'bad' : ''}">${x.ch == null ? '<span class="hmNo">—</span>' : (x.ch > 0 ? '▲' : x.ch < 0 ? '▼' : '') + Math.abs(x.ch) + '%'}</td></tr>`
           + (HM.open === x.key ? `<tr class="hmX"><td colspan="8"><div class="hmXb"><span class="seg">${['kW', 'A', 'PF', 'V'].map(k => `<button data-hmk="${k}" class="${HM.k === k ? 'on' : ''}">${k}</button>`).join('')}</span><span class="mu">최근 30일 · 하루 마지막 순찰 값</span></div>${hmChart(x.all.filter(y => y.d >= hmDate(today, -29)), HM.k, c.lim.pfLo)}</td></tr>` : '');
-      }).join('')}</tbody></table>` : `<div class="mu" style="padding:12px 4px">순찰 설정에서 전기실마다 계측할 배전반을 넣으면 여기 나와요. <a data-t2="pat">순찰 설정 열기</a></div>`}</div>
+      }).join('')}</tbody></table></div>` : `<div class="mu" style="padding:12px 4px">순찰 설정에서 전기실마다 계측할 배전반을 넣으면 여기 나와요. <a data-t2="pat">순찰 설정 열기</a></div>`}</div>
 
     <div class="thC"><div class="thCh"><b>전기실 온·습도</b><span class="mu" style="margin-left:6px">최근 7일</span></div>
       <div class="hmTh">${th.map(({rm, A, L}) => { const hot = L && hmNum(L.r.t) && +L.r.t >= c.lim.tHi;
@@ -193,7 +193,7 @@ document.addEventListener('click', e => {
 .hm .hmIt .s{flex:1;min-width:0}.hm .hmIt b{font-size:13.5px}.hm .hmIt.lv2 b{color:#b91c1c}.hm .hmIt small{display:block;color:var(--mu);font-size:12px}
 .hm .hmIt button{padding:4px 11px;border-radius:8px;border:1px solid #262f7d;background:#262f7d;color:#fff;font-size:12px;cursor:pointer;flex:none}.hm .hmIt button.ln{background:#fff;color:#262f7d;border-color:#c7d2fe}
 .hm .hmOk{padding:10px 4px;color:#067647;font-weight:700}
-.hm .hmT{width:100%;border-collapse:collapse;font-size:13px}.hm .hmT th{text-align:left;color:var(--mu);font-weight:600;font-size:12px;padding:6px 8px;border-bottom:1px solid var(--ln)}
+.hm .hmT{width:100%;border-collapse:collapse;font-size:13px}.hm .hmT th{white-space:nowrap;text-align:left;color:var(--mu);font-weight:600;font-size:12px;padding:6px 8px;border-bottom:1px solid var(--ln)}
 .hm .hmT td{padding:6px 8px;border-bottom:1px solid #f1f3f7;white-space:nowrap}.hm .hmT tr[data-hmrow]{cursor:pointer}.hm .hmT tr[data-hmrow]:hover,.hm .hmT tr.on{background:#f5f7ff}
 .hm .hmT td.bad{color:#c2410c;font-weight:700}.hm .hmT .hmSp{vertical-align:middle}.hm .hmNo{color:#a0a7b4;font-size:11.5px}
 .hm .hmX td{background:#fafbff;padding:8px 10px 10px}.hm .hmXb{display:flex;align-items:center;gap:10px;margin-bottom:4px}
@@ -218,4 +218,24 @@ document.addEventListener('click', e => {
 .hm .hmSb{height:8px;background:var(--bg);border-radius:5px;overflow:hidden}.hm .hmSb i{display:block;height:100%}
 .hm .hmFt{color:var(--mu);font-size:12px;margin:6px 2px 20px}.hm .hmFt a{cursor:pointer;text-decoration:underline}`;
   document.head.appendChild(s);
+})();
+
+// 핸드폰: 아래 메뉴 맨 앞에 [홈]
+(function () {
+  const nav = document.getElementById('mbNav'); if (!nav || nav.querySelector('[data-mv="home"]')) return;
+  const b = document.createElement('button'); b.dataset.mv = 'home'; b.innerHTML = '🏠<span>홈</span>'; nav.insertBefore(b, nav.firstChild);
+  document.addEventListener('click', e => {
+    const nb = e.target.closest && e.target.closest('#mbNav [data-mv]'); if (!nb) return;
+    if (nb.dataset.mv === 'home') { e.stopPropagation(); e.preventDefault(); UI.tab = 'home'; saveUI(); renderAll(); mbSet('main'); return; }
+    if (nb.dataset.mv === 'main' && UI.tab === 'home') { UI.tab = 'map'; saveUI(); }   // [화면]은 지도부터
+  }, true);
+  const _ms = mbSet;
+  mbSet = function (v) { _ms.apply(this, arguments); if (v === 'main' && UI.tab === 'home') document.querySelectorAll('#mbNav button').forEach(x => x.classList.toggle('on', x.dataset.mv === 'home')); };
+  const st = document.createElement('style');
+  st.textContent = `.hm .hmTw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+body.mob .hm{padding-bottom:70px}body.mob .hm .thHh h1{font-size:20px;margin-bottom:10px}body.mob .hm .hmPt{padding:10px 12px;gap:8px}body.mob .hm .hmBar i{width:14px}
+body.mob .hm .thCh{flex-wrap:wrap}body.mob .hm .thCh .mu{font-size:11px}body.mob .hm .hmIt b{font-size:13px}body.mob .hm .hmTh{grid-template-columns:repeat(2,minmax(0,1fr))}
+body.mob .hm .thTwo{grid-template-columns:1fr}body.mob .hm .hmT{font-size:12.5px}body.mob .hm .hmT td,body.mob .hm .hmT th{padding:6px 6px}
+body.mob #mbNav button span{font-size:10.5px}`;
+  document.head.appendChild(st);
 })();

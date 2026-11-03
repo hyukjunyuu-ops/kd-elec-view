@@ -179,7 +179,7 @@ body.mob #mbNav button svg{display:block}`;
     const im = new Image(); im.alt = '로고'; im.onload = () => { if (!(S.cfg && S.cfg.logo)) { el.innerHTML = ''; el.appendChild(im); } }; im.src = TH_LOGO; };
   if (TH_LOGO) renderLogo();
   fillB();
-  setTimeout(() => { const M = {patrol: 'pat', field: 'field', tree: 'tree', plan: 'plan', main: 'map', info: 'info'};
+  setTimeout(() => { const M = {home: 'home', patrol: 'pat', field: 'field', tree: 'tree', plan: 'plan', main: 'map', info: 'info'};
     document.querySelectorAll('#mbNav button').forEach(b => { const k = M[b.dataset.mv]; const sp = b.querySelector('span'); if (k && sp) b.innerHTML = thIc(k, 22) + sp.outerHTML; }); }, 0);
 })();
 
