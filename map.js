@@ -58,7 +58,7 @@ const MAP_CARS = (() => {
   return c;
 })();
 
-const MAP = {step: 0, auto: false, edit: false, selB: '', drag: null, lay: {hv: 0, lv: 0, em: 1}, cardMin: false};   // 기본 = 비상 전원 흐름만 (고압·저압 선은 버튼으로)   // cardMin = 건물 카드 접기
+const MAP = {step: 0, night: true, auto: false, edit: false, selB: '', drag: null, lay: {hv: 0, lv: 0, em: 1}, cardMin: false};   // 기본 = 비상 전원 흐름만 (고압·저압 선은 버튼으로)   // cardMin = 건물 카드 접기
 try { MAP.cardMin = !!localStorage.getItem('ckd_elec2_mpmin'); } catch (e) {}
 try { if (localStorage.getItem('ckd_elec2_maplay_v') === '2') Object.assign(MAP.lay, JSON.parse(localStorage.getItem('ckd_elec2_maplay') || '{}')); else { MAP.lay.hv = 0; MAP.lay.lv = 0; MAP.lay.em = 1; localStorage.setItem('ckd_elec2_maplay_v', '2'); } } catch (e) {}
 let _mapT = 0;
@@ -109,14 +109,17 @@ function mapSteps() {
   const tgt = run.map(n => byId(n.link) ? `${bk(byId(n.link))} ${label(byId(n.link))}` : null).filter(Boolean);
   const pv = PVs.length ? `태양광 ${PVs.length}곳(${kw(PVs) || '?'}kW)이 낮에 전기를 만들어 보태요.` : '';
   const es = ES.length ? `ESS는 전기 요금이 비싼 시간에 저장한 전기를 써서 피크를 낮춰요.` : '';
+  const ctts = G.some(n => n.gk === 'CTTS') ? ' 한전이 복구되면 CTTS 발전기가 잠깐 병렬로 운전해서 끊김 없이 넘겨요.' : ' 한전이 복구되면 다시 일반 전기로 바뀌고 발전기는 멈춰요.';
   return [
-    {k: 'live', t: '평상시', d: `한전 22.9kV 전기가 유틸리티동 수변전실로 들어와서, 변압기로 3.3kV로 낮춘 뒤 각 동으로 보내요. 각 동에서 다시 380/220V로 낮춰서 써요. ${pv} ${es}`},
-    {k: 'cut', t: '① 한전 정전', d: '한전 전기가 끊겼어요. 모든 동의 일반(상용) 전기가 멈춰요.'},
-    {k: 'start', t: '② 비상발전기 기동', d: G.length ? `정전을 감지하면 비상발전기 ${G.length}대(${kw(G) || '?'}kW)가 자동으로 돌기 시작해요. 보통 10초 안팎이에요.` : '아직 트리에 발전기가 없어요. 동을 눌러 [+ 발전기]로 추가하세요.'},
-    {k: 'feed', t: '③ 비상 전원 공급', d: run.length ? `ATS(자동 전환 개폐기)가 비상 쪽으로 바뀌어서, 발전기 전기가 ${tgt.length ? tgt.join(', ') : '(공급 위치 조사 중)'}(으)로 들어가요. 빨간 선이 비상 전기예요.` : '정전 때 가동하도록 설정된 발전기가 없어요.'},
-    {k: 'other', t: '④ 태양광 · ESS', d: [PVs.length ? '태양광은 정전되면 안전을 위해 자동으로 멈춰요 (작업자 감전 방지 · 단독운전 방지).' : '',
-      ES.length ? (ES.some(n => n.emg === 'Y') ? 'ESS가 저장한 전기를 비상으로 보태요.' : 'ESS는 피크저감용이라 정전 때는 전기를 보내지 않아요.') : ''].filter(Boolean).join(' ') || '태양광·ESS가 아직 트리에 없어요.'},
-    {k: 'back', t: '⑤ 한전 복구', d: `한전 전기가 돌아오면 다시 일반 전기로 바뀌고 발전기는 멈춰요.${G.some(n => n.gk === 'CTTS') ? ' CTTS 발전기는 한전과 잠깐 병렬로 운전해서 끊김 없이 넘겨요.' : ''}`},
+    {k: 'live', t: '평상시', d: '한전 22.9kV 전기가 유틸리티동 수변전실로 들어와서, 변압기로 3.3kV로 낮춘 뒤 각 동으로 보내요. 각 동에서 다시 380/220V로 낮춰서 써요.'},
+    {k: 'feed', t: '⚡ 발전기 전원 투입', d: !G.length ? '아직 트리에 발전기가 없어요. 동을 눌러 [+ 발전기]로 추가하세요.' : run.length
+      ? `한전이 정전되면 비상발전기 ${G.length}대(${kw(G) || '?'}kW)가 자동으로 기동하고(10초 안팎), ATS가 비상 쪽으로 바뀌어서 발전기 전기가 ${tgt.length ? tgt.join(', ') : '(공급 위치 조사 중)'}(으)로 들어가요. 빨간 선이 비상 전기예요.${ctts}`
+      : '정전 때 가동하도록 설정된 발전기가 없어요.'},
+    {k: 'ess', t: '🔋 ESS', d: !ES.length ? '아직 트리에 ESS가 없어요. 동을 눌러 [+ ESS]로 추가하세요.' : MAP.night
+      ? `🌙 밤 · 충전 — 전기 요금이 싼 심야에 한전 전기로 ESS ${ES.length}대(${kw(ES) || '?'}kW)의 배터리를 채워요.`
+      : `☀ 낮 · 방전 — 요금이 비싼 낮(피크 시간)에 저장한 전기를 내보내서 한전에서 받는 전기를 줄여요 (피크 저감).${ES.some(n => n.emg === 'Y') ? ' 정전 때는 비상 전원으로도 써요.' : ''}`},
+    {k: 'pv', t: '☀ 태양광', d: !PVs.length ? '아직 트리에 태양광이 없어요. 동을 눌러 [+ 태양광]으로 추가하세요.'
+      : `해가 있는 낮에 태양광 ${PVs.length}곳(${kw(PVs) || '?'}kW)이 전기를 만들어 연결된 곳에 보태요. 한전이 정전되면 안전을 위해 자동으로 멈춰요 (작업자 감전 · 단독운전 방지).`},
   ];
 }
 
@@ -170,7 +173,7 @@ function mapTree(x, y, r, st) {
 function mapSvg(opt) {
   const OUT = !!(opt && opt.outage);
   const st = OUT ? {k: 'live'} : mapSteps()[MAP.step] || mapSteps()[0], k = st.k;
-  const black = ['cut', 'start', 'feed', 'other'].includes(k), feed = ['feed', 'other'].includes(k);
+  const black = k === 'feed', feed = k === 'feed', night = k === 'ess' && MAP.night, sunny = k === 'pv' || (k === 'ess' && !MAP.night);
   const P = mapPower(black), edges = mapEdges(), srcs = mapSrcs();
   const FOC = !OUT && MAP.selB ? mapPaths(mapBldOf(MAP.selB)) : null;   // 건물을 골랐으면 그 동 전원 경로만 강조
   const cnt = {}, emN = {}, pnl = {}, dN = {}, dP = {};
@@ -206,6 +209,14 @@ function mapSvg(opt) {
   items.push({y: K[1], x: K[0], svg: `<g class="mpK" style="cursor:${MAP.edit ? 'move' : 'default'}"><path d="M${kx - 16} ${ky} L${kx - 3} ${ky - 84} L${kx + 3} ${ky - 84} L${kx + 16} ${ky} M${kx - 26} ${ky - 66} H${kx + 26} M${kx - 20} ${ky - 46} H${kx + 20} M${kx - 13} ${ky - 30} L${kx + 9} ${ky - 6} M${kx + 13} ${ky - 30} L${kx - 9} ${ky - 6} M${kx - 8} ${ky - 60} L${kx + 6} ${ky - 40} M${kx + 8} ${ky - 60} L${kx - 6} ${ky - 40}" stroke="${kc}" stroke-width="2.6" fill="none"/>
     <rect x="${kx - 46}" y="${ky + 4}" width="92" height="20" rx="10" fill="${black ? '#fee2e2' : '#fff'}" stroke="${black ? '#dc2626' : '#7f1d1d'}"/><text x="${kx}" y="${ky + 18}" text-anchor="middle" font-size="12" font-weight="bold" fill="#7f1d1d">한전 22.9kV${black ? ' ✕' : ''}</text></g>`});
   items.sort((a, b) => a.y - b.y || b.x - a.x).forEach(i => o.push(i.svg));
+  if (night) {   // 밤: 어둡게 + 달 · 별
+    o.push(`<rect width="${MAP_W}" height="${MAP_H}" fill="#0b1636" opacity=".58" pointer-events="none"/>`,
+      `<g pointer-events="none"><circle cx="${MAP_W - 110}" cy="70" r="26" fill="#fef3c7"/><circle cx="${MAP_W - 98}" cy="62" r="24" fill="#16214a"/>`,
+      [[80, 40], [190, 90], [320, 30], [470, 70], [620, 26], [760, 84], [900, 40], [1040, 100], [1180, 34], [260, 130], [560, 120], [980, 140]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="${i % 3 ? 1.6 : 2.4}" fill="#fff"><animate attributeName="opacity" values="1;.3;1" dur="${2 + i % 3}s" repeatCount="indefinite"/></circle>`).join(''), '</g>');
+  } else if (sunny) {   // 낮: 해
+    const sx = MAP_W - 110, sy = 72;
+    o.push(`<g pointer-events="none"><g><animateTransform attributeName="transform" type="rotate" from="0 ${sx} ${sy}" to="360 ${sx} ${sy}" dur="24s" repeatCount="indefinite"/>${[...Array(12)].map((_, i) => { const a = i * Math.PI / 6; return `<line x1="${sx + Math.cos(a) * 36}" y1="${sy + Math.sin(a) * 36}" x2="${sx + Math.cos(a) * 50}" y2="${sy + Math.sin(a) * 50}" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>`; }).join('')}</g><circle cx="${sx}" cy="${sy}" r="28" fill="#fbbf24" stroke="#f59e0b" stroke-width="3"/></g>`);
+  }
 
   // 동 사이 흐름: 지붕 위로 넘어가는 호 (굵기 = 회선 수 · 흐르는 점 = 방향)
   const top = b => { const t = mP(b.c[0], b.c[1], b.h); return [t[0], t[1] - 6]; };
@@ -266,9 +277,19 @@ function mapSvg(opt) {
     SP.set(n.id, {x, y, bx: x, by: y + 30});
   });
   // 발전기·태양광·ESS → 공급 위치 (빨간 점선 호)
+  const srcOn = n => k === 'ess' ? n.type === 'ESS' : k === 'pv' ? n.type === 'PV' : k === 'feed' ? n.type === 'GEN' : true;   // 장면마다 그 설비만
   srcs.forEach(n => {
-    const t = byId(n.link), tb = t && mapByBld(bk(t)); if (!tb) return;
-    if (OUT || !(FOC ? FOC.srcs.includes(n) : MAP.lay.em || feed)) return;
+    const t = byId(n.link), tb = t && mapByBld(bk(t)); if (!tb || OUT || !srcOn(n)) return;
+    if (k === 'ess' || k === 'pv') {   // ESS 충전(건물 → ESS) · 방전(ESS → 건물) · 태양광 공급(→ 건물)
+      const A = SP.get(n.id), B = top(tb), chg = night, c = n.type === 'PV' ? '#eab308' : chg ? '#16a34a' : '#f97316';
+      const qx = (A.x + B[0]) / 2, qy = Math.min(A.y, B[1]) - 50, d = chg ? `M${B[0]} ${B[1]} Q${qx} ${qy} ${A.x} ${A.y}` : `M${A.x} ${A.y} Q${qx} ${qy} ${B[0]} ${B[1]}`;
+      const tx = n.type === 'PV' ? `☀ 발전 ${n.kw ? n.kw + 'kW ' : ''}공급` : chg ? '🔋 충전 중' : '⚡ 방전 · 피크 저감';
+      o.push(`<g pointer-events="none"><path d="${d}" fill="none" stroke="${c}" stroke-width="16" opacity=".22" stroke-linecap="round"/><path d="${d}" fill="none" stroke="${c}" stroke-width="6" stroke-linecap="round"/>`,
+        `<path d="${d}" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="3 18" stroke-linecap="round"><animate attributeName="stroke-dashoffset" from="42" to="0" dur=".9s" repeatCount="indefinite"/></path>`,
+        `<rect x="${qx - tx.length * 5 - 10}" y="${(A.y + 2 * qy + B[1]) / 4 - 13}" width="${tx.length * 10 + 20}" height="25" rx="12.5" fill="${c}" stroke="#fff" stroke-width="2"/><text x="${qx}" y="${(A.y + 2 * qy + B[1]) / 4 + 4.5}" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#fff">${esc(tx)}</text></g>`);
+      return;
+    }
+    if (!(FOC ? FOC.srcs.includes(n) : MAP.lay.em || feed)) return;
     const A = SP.get(n.id), B = top(tb), run = P.src[n.id] === 'run' && feed;
     const d = `M${A.x} ${A.y} Q${(A.x + B[0]) / 2} ${Math.min(A.y, B[1]) - 50} ${B[0]} ${B[1]}`;
     o.push(`<path pointer-events="none" d="${d}"${OUT ? ' opacity=".3"' : ''} fill="none" stroke="${run ? '#dc2626' : '#fca5a5'}" stroke-width="${run ? 6 : 2.5}" stroke-dasharray="${run ? '14 9' : '6 6'}" stroke-linecap="round">${run ? '<animate attributeName="stroke-dashoffset" from="46" to="0" dur="1s" repeatCount="indefinite"/>' : ''}</path>`);
@@ -284,19 +305,25 @@ function mapSvg(opt) {
       <line x1="${x}" y1="${ly + hgt}" x2="${x}" y2="${ly + hgt + 8}" stroke="#94a3b8"/></g>`);
   });
   if (!OUT) srcs.forEach(n => {
+    if (!srcOn(n)) return;
     const q = SP.get(n.id), s = P.src[n.id], {x, y} = q, r = q.pole ? 22 : 16;
     let ring = '#94a3b8', state = '', pulse = false;
     if (n.type === 'GEN') {
-      if (k === 'start' || (feed && s === 'run')) { ring = '#dc2626'; state = k === 'start' ? '기동 중' : '⚡ 공급 중'; pulse = true; }
+      if (feed && s === 'run') { ring = '#dc2626'; state = '⚡ 공급 중'; pulse = true; }
       else state = s === 'off' ? '내림' : '대기';
-    } else if (!black) { ring = n.type === 'PV' ? '#16a34a' : '#2563eb'; state = n.type === 'PV' ? '발전 중' : '피크 대응'; }
+    } else if (k === 'ess' && n.type === 'ESS') { ring = night ? '#16a34a' : '#f97316'; state = night ? '🔋 충전 중' : '⚡ 방전 중'; pulse = true; }
+    else if (k === 'pv' && n.type === 'PV') { ring = '#eab308'; state = '☀ 발전 중'; pulse = true; }
+    else if (!black) { ring = n.type === 'PV' ? '#16a34a' : '#2563eb'; state = n.type === 'PV' ? '발전 중' : '피크 대응'; }
     else { state = s === 'run' ? '⚡ 공급 중' : '정지'; if (s === 'run' && feed) { ring = '#dc2626'; pulse = true; } }
-    const ic = fpIcon(n), hl = k === 'other' && n.type !== 'GEN', tc = ring === '#94a3b8' ? '#475569' : ring;
+    const ic = fpIcon(n), hl = false, tc = ring === '#94a3b8' ? '#475569' : ring;
     o.push(`<g class="mpS" data-mps="${esc(n.id)}" data-bx="${q.bx}" data-by="${q.by}" style="cursor:${MAP.edit ? 'move' : 'pointer'}"><title>${esc(label(n))}${n.kw ? ' ' + esc(n.kw) + 'kW' : ''} · ${esc(state)}${n.link ? '' : ' · 공급 위치 조사 중'}</title>`,
       q.pole ? `<ellipse cx="${x}" cy="${q.by}" rx="14" ry="5" fill="#000" opacity=".18"/><line x1="${x}" y1="${q.by}" x2="${x}" y2="${y + r}" stroke="#64748b" stroke-width="2"/>` : '',
       hl ? `<circle cx="${x}" cy="${y}" r="${r + 10}" fill="none" stroke="#f59e0b" stroke-width="4"><animate attributeName="r" values="${r + 6};${r + 14};${r + 6}" dur="1.2s" repeatCount="indefinite"/></circle>` : '',
       `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" stroke="${ring}" stroke-width="${q.pole ? 4 : 3}">${pulse ? `<animate attributeName="stroke-width" values="3;8;3" dur=".9s" repeatCount="indefinite"/>` : ''}</circle>`,
       ic ? ic.replace('<svg ', `<svg x="${x - r * .64}" y="${y - r * .64}" width="${r * 1.28}" height="${r * 1.28}" `) : '',
+      k === 'ess' && n.type === 'ESS' ? (() => { const bx = x - r - 22, by = y - 16, H = 32, a = night ? [4, H - 4] : [H - 4, 4];
+        return `<rect x="${bx}" y="${by}" width="14" height="${H}" rx="3" fill="#fff" stroke="#334155" stroke-width="2"/><rect x="${bx + 4}" y="${by - 3}" width="6" height="3" fill="#334155"/>`
+          + `<rect x="${bx + 2.5}" width="9" rx="1.5" fill="${night ? '#22c55e' : '#f97316'}"><animate attributeName="height" values="${a[0]};${a[1]}" dur="3.6s" repeatCount="indefinite"/><animate attributeName="y" values="${by + H - 2 - a[0]};${by + H - 2 - a[1]}" dur="3.6s" repeatCount="indefinite"/></rect>`; })() : '',
       q.pole ? `<text x="${x + 26}" y="${y - 3}" font-size="12" font-weight="bold" fill="#0f172a" paint-order="stroke" stroke="#fff" stroke-width="4">${esc(label(n))}${n.kw ? ' ' + esc(n.kw) + 'kW' : ''}</text><text x="${x + 26}" y="${y + 12}" font-size="11.5" fill="${tc}" paint-order="stroke" stroke="#fff" stroke-width="4">${esc(state)}${n.link ? '' : ' · 연결 조사 중'}</text>`
         : `<text x="${x}" y="${y + r + 11}" text-anchor="middle" font-size="10.5" font-weight="bold" fill="${tc}" paint-order="stroke" stroke="#fff" stroke-width="3.5">${n.kw ? esc(n.kw) + 'kW' : esc(state)}</text>`,
       '</g>');
@@ -415,16 +442,24 @@ function mapView() {
   return `<div class="mpBar"><h2>공장 지도</h2><span class="mpLay">${lay.map(([k, l, c]) => `<button data-mpl="${k}" class="${MAP.lay[k] ? 'on' : ''}"><i style="background:${c}"></i>${l}</button>`).join('')}</span><span class="sp"></span>
       <button data-mpa="png">🖼 PNG</button></div>
     <div class="mpSc">
-      <div class="mpSt">${S6.map((s, i) => `<button data-mpst="${i}" class="${i === MAP.step ? 'on' : ''}${i ? ' bk' : ''}">${s.t}</button>`).join('')}</div>
-      <div class="mpD ${sc && MAP.step < 5 ? 'bk' : ''}"><b>${st.t}</b> ${esc(st.d)}</div>
+      <div class="mpSt">${S6.map((s, i) => `<button data-mpst="${i}" class="${i === MAP.step ? 'on' : ''}${s.k === 'feed' ? ' bk' : ''}">${s.t}</button>`).join('')}</div>
+      <div class="mpD ${st.k === 'feed' ? 'bk' : st.k === 'ess' && MAP.night ? 'nt' : st.k === 'ess' || st.k === 'pv' ? 'sun' : ''}"><b>${st.t}</b> ${esc(st.d)}${st.k === 'ess' ? `<span class="mpDN"><button data-mpn="1" class="${MAP.night ? 'on' : ''}">🌙 밤 · 충전</button><button data-mpn="0" class="${MAP.night ? '' : 'on'}">☀ 낮 · 방전</button></span>` : ''}</div>
       <div class="mpNv"><button data-mpa="prev"${MAP.step ? '' : ' disabled'}>◀ 이전</button><button data-mpa="next"${MAP.step < S6.length - 1 ? '' : ' disabled'}>다음 ▶</button>
         <button data-mpa="auto" class="${MAP.auto ? 'on' : ''}">${MAP.auto ? '⏸ 멈춤' : '⏵ 자동 재생'}</button></div>
     </div>
     ${MAP.edit ? '<div class="mpHint">✎ 편집 중: 발전기·태양광·ESS·한전 철탑을 끌어서 옮기기 · 건물을 눌러 [+ 발전기] 등 추가</div>' : ''}
     <div id="mpW">${mapSvg()}${mapCard()}</div>`;
 }
+// ESS 장면: 밤(충전) ↔ 낮(방전) 저절로 바뀜 (건물 카드를 열었거나 편집 중이면 멈춤)
+let _mapNT = 0;
+function mapNightLoop() {
+  clearInterval(_mapNT);
+  _mapNT = setInterval(() => { const st = mapSteps()[MAP.step]; if (UI.tab !== 'map' || !st || st.k !== 'ess') { clearInterval(_mapNT); _mapNT = 0; return; }
+    if (MAP.selB || MAP.edit || MAP.drag) return; MAP.night = !MAP.night; renderView(); }, 4500);
+}
 function mapGo(i) {
   const n = mapSteps().length; MAP.step = Math.max(0, Math.min(n - 1, i));
+  if ((mapSteps()[MAP.step] || {}).k === 'ess') { MAP.night = true; mapNightLoop(); }
   if (MAP.step === n - 1) MAP.auto = false;
   renderView();
 }
@@ -453,6 +488,7 @@ document.addEventListener('click', e => {
   const t = e.target;
   const ly = t.closest('[data-mpl]');
   if (ly) { const k = ly.dataset.mpl; MAP.lay[k] = MAP.lay[k] ? 0 : 1; try { localStorage.setItem('ckd_elec2_maplay', JSON.stringify(MAP.lay)); } catch (e2) {} renderView(); return; }
+  const nt = t.closest('[data-mpn]'); if (nt) { MAP.night = nt.dataset.mpn === '1'; mapNightLoop(); renderView(); return; }
   const st = t.closest('[data-mpst]'); if (st) { MAP.auto = false; clearInterval(_mapT); mapGo(+st.dataset.mpst); return; }
   const a = t.closest('[data-mpa]');
   if (a) {
@@ -525,7 +561,8 @@ document.addEventListener('pointerup', e => {
 #view .mpSt button.bk{border-color:#fecaca;color:#991b1b}
 #view .mpSt button.on{background:#262f7d;color:#fff;border-color:#262f7d}#view .mpSt button.bk.on{background:#dc2626;border-color:#dc2626}
 #view .mpD{font-size:14px;line-height:1.6;color:#1e293b;background:#f0f9ff;border-radius:8px;padding:8px 12px;min-height:46px}
-#view .mpD.bk{background:#fef2f2;color:#7f1d1d}#view .mpD b{margin-right:6px}
+#view .mpD.bk{background:#fef2f2;color:#7f1d1d}#view .mpD.nt{background:#1e293b;color:#e2e8f0}#view .mpD.sun{background:#fffbeb;color:#78350f}
+#view .mpDN{display:inline-flex;gap:4px;margin-left:8px;vertical-align:middle}#view .mpDN button{padding:2px 9px;border:1px solid #cbd5e1;border-radius:999px;background:#fff;color:#334155;font-size:12px;cursor:pointer}#view .mpDN button.on{background:#262f7d;color:#fff;border-color:#262f7d}#view .mpD b{margin-right:6px}
 #view .mpNv{display:flex;gap:4px;margin-top:6px;justify-content:flex-end}
 #view .mpHint{font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:5px 9px;margin-bottom:6px}
 #view .mpHint.soft{color:#64748b;background:#f8fafc;border-color:#e2e8f0}
