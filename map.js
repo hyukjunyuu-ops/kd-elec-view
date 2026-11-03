@@ -58,9 +58,9 @@ const MAP_CARS = (() => {
   return c;
 })();
 
-const MAP = {step: 0, auto: false, edit: false, selB: '', drag: null, lay: {hv: 1, lv: 0, em: 1}, cardMin: false};   // cardMin = 건물 카드 접기
+const MAP = {step: 0, auto: false, edit: false, selB: '', drag: null, lay: {hv: 0, lv: 0, em: 1}, cardMin: false};   // 기본 = 비상 전원 흐름만 (고압·저압 선은 버튼으로)   // cardMin = 건물 카드 접기
 try { MAP.cardMin = !!localStorage.getItem('ckd_elec2_mpmin'); } catch (e) {}
-try { Object.assign(MAP.lay, JSON.parse(localStorage.getItem('ckd_elec2_maplay') || '{}')); } catch (e) {}
+try { if (localStorage.getItem('ckd_elec2_maplay_v') === '2') Object.assign(MAP.lay, JSON.parse(localStorage.getItem('ckd_elec2_maplay') || '{}')); else { MAP.lay.hv = 0; MAP.lay.lv = 0; MAP.lay.em = 1; localStorage.setItem('ckd_elec2_maplay_v', '2'); } } catch (e) {}
 let _mapT = 0;
 
 const mapCfg = () => { S.cfg.map = S.cfg.map || {}; const m = S.cfg.map; m.pos = m.pos || {}; m.bmap = m.bmap || {}; return m; };
@@ -158,6 +158,7 @@ function mapBlock(k, st) {
   if (k.deco === 'cool') [[.2, .35], [.4, .35], [.6, .35], [.8, .35]].forEach(([a, b]) => o.push(`<circle cx="${x0 + W * a}" cy="${y0 + H * b}" r="16" fill="#94a3b8" stroke="#64748b" stroke-width="2"/><circle cx="${x0 + W * a}" cy="${y0 + H * b}" r="8" fill="#475569"/>`));
   if (k.deco === 'hvac') [[.25, .3], [.6, .55], [.75, .25]].forEach(([a, b]) => o.push(`<rect x="${x0 + W * a}" y="${y0 + H * b}" width="${Math.min(30, W * .18)}" height="${Math.min(22, H * .12)}" fill="#9ca3af" stroke="#6b7280"/>`));
   if (k.deco === 'grate') for (let yy = y0 + 20; yy < y1 - 10; yy += 34) o.push(`<rect x="${x0 + 16}" y="${yy}" width="${W - 32}" height="18" fill="#9ca3af" opacity=".6"/>`);
+  if (st.out && (st.cut || st.part)) o.push(`<rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="${st.cut ? '#dc2626' : '#f97316'}" opacity=".55"/>`);   // 정전 그림: 지붕을 빨강·주황으로
   o.push('</g>');
   return o.join('');
 }
@@ -196,7 +197,7 @@ function mapSvg(opt) {
   const items = [];
   MAP_BLD.forEach(b => {
     const bld = mapBldOf(b.id), n = cnt[bld] || 0;
-    const s = {black, em: emN[bld] > 0, lit: !black && n > 0 && !cutOf(bld), sel: !OUT && MAP.selB === b.id, cut: cutOf(bld), part: partOf(bld)};
+    const s = {black, em: emN[bld] > 0, lit: !black && n > 0 && !cutOf(bld), sel: !OUT && MAP.selB === b.id, cut: cutOf(bld), part: partOf(bld), out: OUT};
     b.blocks.forEach(kb => items.push({y: kb.r[3], x: kb.r[0], svg: `<g class="mpB" data-mpb="${b.id}" style="cursor:pointer"${OUT && !s.cut && !s.part ? ' opacity=".5"' : ''}>${mapBlock(kb, s)}</g>`}));
   });
   MAP_TREES.forEach(([x, y, r]) => items.push({y, x, svg: mapTree(x, y, r, {black})}));
@@ -225,7 +226,8 @@ function mapSvg(opt) {
     const cx = (A[0] + B[0]) / 2, cy = Math.min(A[1], B[1]) - 40 - dist * .22 - (j - 1) * 26;
     const c = fpLineCol(e.f[0].n), w = 4 + Math.min(5, new Set(e.f.map(f => f.p && f.p.id)).size) * 1.6, on = !black && !(OUT && e.f.every(f => !P.alive.has(f.n.id)));
     const d = `M${A[0]} ${A[1]} Q${cx} ${cy} ${B[0]} ${B[1]}`;
-    if (OUT) {   // 계획정전 그림
+    if (OUT) return;   // 계획정전 그림은 선 없이 건물 색으로만
+    if (OUT) {
       const q = eSt(e), red = q.k === 'dead' ? '#dc2626' : '#f97316', ww = w + 3;
       if (q.k === 'ok') { o.push(`<g class="mpE" pointer-events="none" opacity=".35"><path d="${d}" fill="none" stroke="#94a3b8" stroke-width="${Math.max(2.5, w * .6)}" stroke-linecap="round"/></g>`); return; }
       const mx = (A[0] + 2 * cx + B[0]) / 4, my = (A[1] + 2 * cy + B[1]) / 4;
@@ -266,7 +268,7 @@ function mapSvg(opt) {
   // 발전기·태양광·ESS → 공급 위치 (빨간 점선 호)
   srcs.forEach(n => {
     const t = byId(n.link), tb = t && mapByBld(bk(t)); if (!tb) return;
-    if (!OUT && !(FOC ? FOC.srcs.includes(n) : MAP.lay.em || feed)) return;
+    if (OUT || !(FOC ? FOC.srcs.includes(n) : MAP.lay.em || feed)) return;
     const A = SP.get(n.id), B = top(tb), run = P.src[n.id] === 'run' && feed;
     const d = `M${A.x} ${A.y} Q${(A.x + B[0]) / 2} ${Math.min(A.y, B[1]) - 50} ${B[0]} ${B[1]}`;
     o.push(`<path pointer-events="none" d="${d}"${OUT ? ' opacity=".3"' : ''} fill="none" stroke="${run ? '#dc2626' : '#fca5a5'}" stroke-width="${run ? 6 : 2.5}" stroke-dasharray="${run ? '14 9' : '6 6'}" stroke-linecap="round">${run ? '<animate attributeName="stroke-dashoffset" from="46" to="0" dur="1s" repeatCount="indefinite"/>' : ''}</path>`);
@@ -281,7 +283,7 @@ function mapSvg(opt) {
       ${sub ? `<text x="${x}" y="${ly + 30}" text-anchor="middle" font-size="10.5" font-weight="${OUT && (em || L.part) ? 'bold' : 'normal'}" fill="${em ? '#b91c1c' : L.part ? '#c2410c' : OUT && n ? '#15803d' : '#64748b'}">${esc(sub)}</text>` : ''}
       <line x1="${x}" y1="${ly + hgt}" x2="${x}" y2="${ly + hgt + 8}" stroke="#94a3b8"/></g>`);
   });
-  srcs.forEach(n => {
+  if (!OUT) srcs.forEach(n => {
     const q = SP.get(n.id), s = P.src[n.id], {x, y} = q, r = q.pole ? 22 : 16;
     let ring = '#94a3b8', state = '', pulse = false;
     if (n.type === 'GEN') {
@@ -301,8 +303,10 @@ function mapSvg(opt) {
   });
   if (OUT) {
     const off = [...P.off].map(byId).filter(Boolean).map(label).join(', ');
-    o.push(`<g><rect x="14" y="12" width="${Math.max(330, off.length * 9 + 120)}" height="62" rx="10" fill="#fff" stroke="#cbd5e1" opacity=".95"/>
-      <text x="28" y="36" font-size="15" font-weight="bold" fill="#0f172a">정전 범위 · ${esc(off)} 차단</text>
+    const nC = MAP_BLD.filter(b => !b.small && cutOf(mapBldOf(b.id))).length, nP = MAP_BLD.filter(b => !b.small && partOf(mapBldOf(b.id))).length;
+    const ttl = `${off} 차단 → ` + ([nC ? `정전 ${nC}개 동` : '', nP ? `일부 정전 ${nP}개 동` : ''].filter(Boolean).join(' · ') || '정전되는 동 없음');
+    o.push(`<g><rect x="14" y="12" width="${Math.max(330, [...ttl].reduce((w, ch) => w + (ch.charCodeAt(0) > 255 ? 15 : 9), 0) + 40)}" height="62" rx="10" fill="#fff" stroke="#cbd5e1" opacity=".95"/>
+      <text x="28" y="36" font-size="15" font-weight="bold" fill="#0f172a">${esc(ttl)}</text>
       ${[['#dc2626', '정전'], ['#f97316', '일부 정전'], ['#22c55e', '정상']].map(([c, t], i) => `<rect x="${28 + i * 100}" y="48" width="14" height="14" rx="3" fill="${c}"/><text x="${48 + i * 100}" y="60" font-size="12.5" fill="#334155">${t}</text>`).join('')}</g>`);
   }
   o.push('</svg>');
