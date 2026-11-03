@@ -103,6 +103,9 @@ const RP_TAGS = [
   ['{배전반수} {분전반수} {회로수}', '정전되는 배전반·분전반·회로 수'], ['{중요부하수} {일반회로수}', '중요 부하 수 · 그 밖의 일반 회로 수'],
   ['{협조팀목록}', '협조 팀 (즐겨찾기 그룹 기준, 쉼표)'],
   ['{#확인사항}{내용}{/확인사항}', '확인 사항 목록 (자동 추천) — 줄 반복'],
+  ['{작업명} {일시} {작업사유} {정전구역} {정전내용} {협조부서} {책임자} {작업자} {감시자} {작성자} {문서번호}', '입력 화면에서 쓴 값 · 문서번호는 자동'],
+  ['{비상없음수} {중요부하요약}', '비상전원 없는 중요 부하 수 · 종류별 건수 한 줄'],
+  ['{#분류}{이름} {건수} {#목록}{번호} {명칭} {위치} {반} {비상}{/목록}{/분류}', '중요 부하 종류별 묶음 (표의 종류 줄 + 부하 줄 반복) · {#없음}…{/없음} = 비상전원 없을 때만'],
   ['{#중요부하}{번호} {분류} {동} {반} {명칭} {정격} {비고}{/중요부하}', '중요 부하 표 — 표 한 줄에 넣으면 줄 수만큼 반복'],
   ['{#동별}{동} {배전반} {분전반} {회로} {중요} {비상}{/동별}', '동별 영향 표 — 표 한 줄 반복'],
   ['{#협조팀}{팀} {개수}{/협조팀}', '협조 팀 표 — 표 한 줄 반복'],
@@ -134,7 +137,30 @@ function rpTags(D) {
     중요부하: imp.map((n, i) => ({번호: i + 1, 분류: n.imp, 동: bk(n), 반: D.host(n) ? label(D.host(n)) : '', 명칭: label(n), 정격: spec(n), 비고: effSrc(n) === 'E' ? '비상 계통' : ''})),
     동별: blds.map(b => { const r = D.byB[b]; return {동: b, 배전반: r.mdb, 분전반: r.pnl, 회로: r.cir, 중요: r.imp, 비상: r.em}; }),
     협조팀: D.teams.map(([팀, 개수]) => ({팀, 개수})),
+    // 작업 계획서 (기본 양식): 입력 화면 값 + 중요 부하 종류별 묶음
+    ...rpFormTags(D, cats)
   };
+}
+// 입력 화면 값 (마지막 입력을 기억 · 동기화됨)
+const RP_F = [['작업명', '예) 본동 2층 증설 분전반 연결 작업'], ['일시', '예) 2026.11.15 (토) 08:00 ~ 14:00 (6시간)'], ['정전구역', '예) 본동 1~3층 생산구역'],
+  ['작업사유', '예) 신규 설비 전원 공급을 위한 모선 연결'], ['정전내용', '예) 2층 포장실 조명·전열, 3층 공조기(AHU-2) …', 1], ['협조부서', '예) 생산1팀, 생산3팀, QC'], ['책임자', ''], ['작업자', ''], ['감시자', ''], ['작성자', '']];
+const rpForm = () => (S.cfg.rpForm = S.cfg.rpForm || {});
+const rpEm = n => pathOf(n).some(x => x.type === 'UPS' && x.id !== n.id) ? 'UPS' : effSrc(n) === 'E' ? '발전기' : '없음';
+function rpFormTags(D, cats) {
+  const f = rpForm(), t = new Date(), p = x => String(x).padStart(2, '0');
+  const fl = n => { try { const h = D.host(n); return h && typeof bvFloorUp === 'function' ? bvFloorUp(h, bvCfg(bk(h))) : ''; } catch (e) { return ''; } };
+  let no = 0;
+  const 분류 = cats.map(c => { const L = D.imp.filter(n => n.imp === c);
+    return {이름: c, 건수: L.length, 목록: L.map(n => { const em = rpEm(n); return {번호: ++no, 명칭: label(n), 위치: [bk(n), fl(n)].filter(Boolean).join(' '), 반: D.host(n) ? label(D.host(n)) : '', 비상: em, 없음: em === '없음'}; })}; });
+  const o = {}; RP_F.forEach(([k]) => { o[k] = f[k] || ''; });
+  if (!o.작성자) o.작성자 = (typeof syWho === 'function' && syWho()) || '';
+  return Object.assign(o, {
+    문서번호: `정전-${t.getFullYear()}${p(t.getMonth() + 1)}${p(t.getDate())}`,
+    정전차단기: D.off.map(n => `${label(n)} (${[n.cbk || tlabel(n), bk(n)].filter(Boolean).join(' · ')})`).join(', '),
+    비상없음수: D.imp.filter(n => rpEm(n) === '없음').length,
+    중요부하요약: 분류.map(c => `${c.이름} ${c.건수}`).join('  ·  '),
+    분류
+  });
 }
 // 그림 PNG: 'map' = 공장 지도에 정전 구역 (생산·일반용) · 'sld' = 수변전 단선도 (전기 담당용)
 function rpPng(kind) {
@@ -189,8 +215,8 @@ async function rpWord() {
   const z = doc.getZip();
   for (const [nm, kind] of [['정전지도', 'map'], ['단선도', 'sld']]) { try { rpPutImage(z, await rpPng(kind), nm); } catch (e) { console.warn(nm + ' 그림 넣기 실패', e); } }
   const name = D.off.map(label).join('_').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40);
-  download(z.generate({type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}), `계획정전_${name}_${stamp()}.docx`);
-  toast(`계획정전 보고서(Word)를 받았어요${mine ? ` · 양식: ${mine.name}` : ' · 기본 양식'}. 1페이지 계획 내용은 Word에서 직접 쓰세요.`, false);
+  download(z.generate({type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}), `계획정전_작업계획서_${name}_${stamp()}.docx`);
+  toast(`계획정전 작업 계획서(Word)를 받았어요${mine ? ` · 양식: ${mine.name}` : ''}. 빈칸은 Word에서 채우세요.`, false);
 }
 // AI(Word·PPT)에게 줄 자료
 function rpAiText(D) {
@@ -210,9 +236,11 @@ async function rpMenu() {
   const D = rpData();
   if (!D.off.length) { rpOpen(); return; }
   const mine = await rpTplGet();
-  uiModal(`<h3>📄 계획정전 보고서</h3>
+  uiModal(`<h3>📄 계획정전 작업 계획서</h3>
     <p>정전 범위: <b>${esc(D.off.map(label).join(', '))}</b> · 회로 ${D.N.length}개 · 중요 부하 <b>${D.imp.length}</b>개</p>
-    <div class="rpBig"><button data-rpa="word" class="pri">📝 Word로 받기<small>1페이지 계획서 틀(직접 작성) + 2페이지 중요 부하 목록</small></button></div>
+    <div class="rpF">${RP_F.map(([k, ph, big]) => `<label${big ? ' class="w"' : ''}><span>${k.replace('작업사유', '작업 사유').replace('정전구역', '정전 구역').replace('정전내용', '정전 내용').replace('협조부서', '협조 부서')}</span>${big ? `<textarea data-rpf="${k}" rows="2" placeholder="${esc(ph)}">${esc(rpForm()[k] || '')}</textarea>` : `<input data-rpf="${k}" placeholder="${esc(ph || (k === '작성자' ? syWho() : ''))}" value="${esc(rpForm()[k] || '')}">`}</label>`).join('')}</div>
+    <div class="rpRef"><b>참고 · 정전되는 분전반 ${D.N.filter(n => FP_BOX[n.type] || n.type === 'MDB').length}면</b> (보고서에는 안 들어가요)<div>${D.N.filter(n => FP_BOX[n.type] || n.type === 'MDB').map(n => `<span>${esc(label(n))}</span>`).join('')}</div></div>
+    <div class="rpBig"><button data-rpa="word" class="pri">📝 Word로 받기<small>1장 작업 계획서 (결재·개요·비상 연락처) + 별첨 중요 부하 ${D.imp.length}건 (종류별)</small></button></div>
     <div class="rpRow"><span class="muted">양식:</span> <b>${mine ? esc(mine.name) : '기본 양식'}</b>
       <button data-rpa="tplset">양식 바꾸기 (.docx)</button>${mine ? '<button data-rpa="tplreset">기본 양식으로</button>' : ''}
       <button data-rpa="tplget">📥 기본 양식 받기 (꾸미기용)</button><button data-rpa="tags">📖 표시 목록</button></div>
@@ -224,6 +252,7 @@ function rpTagsView() {
     <div class="mdlS"><table class="tb"><thead><tr><th>표시</th><th>들어가는 내용</th></tr></thead><tbody>${RP_TAGS.map(([a, b]) => `<tr><td><code>${esc(a)}</code></td><td>${esc(b)}</td></tr>`).join('')}</tbody></table></div>
     <div class="mdlA"><button data-rpa="copytags">표시 목록 복사</button><button data-mdl="x">닫기</button></div>`, true);
 }
+document.addEventListener('input', e => { const k = e.target.dataset && e.target.dataset.rpf; if (!k) return; rpForm()[k] = e.target.value; clearTimeout(rpForm._t); rpForm._t = setTimeout(save, 600); });
 document.addEventListener('click', async e => {
   const t = e.target; if (!t.closest) return;
   if (t.closest('[data-rp]')) { rpMenu(); return; }
@@ -252,5 +281,9 @@ document.addEventListener('click', async e => {
 #mdl .rpBig small{font-weight:normal;font-size:11.5px;color:#c7d2fe}
 #mdl .rpRow{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:10px;font-size:12.5px}
 #mdl .rpRow button{padding:5px 10px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;cursor:pointer;font-size:12px}
-#mdl code{background:#f1f5f9;padding:1px 4px;border-radius:4px;font-size:11.5px}`;
+#mdl code{background:#f1f5f9;padding:1px 4px;border-radius:4px;font-size:11.5px}
+#mdl .rpF{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px 10px;margin:8px 0}#mdl .rpF label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:#475569;font-weight:600;min-width:0}
+#mdl .rpF label:nth-child(1),#mdl .rpF label:nth-child(4),#mdl .rpF label:nth-child(5),#mdl .rpF label:nth-child(6){grid-column:span 4}#mdl .rpF label:nth-child(2),#mdl .rpF label:nth-child(3){grid-column:span 2}
+#mdl .rpF input,#mdl .rpF textarea{font:inherit;font-weight:400;font-size:13px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;color:#0f172a;min-width:0}
+#mdl .rpRef{font-size:11.5px;color:#64748b;margin:4px 0 10px}#mdl .rpRef div{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;max-height:44px;overflow:auto}#mdl .rpRef span{background:#f1f5f9;border-radius:4px;padding:1px 6px}`;
   document.head.appendChild(s); })();
