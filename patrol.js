@@ -249,6 +249,9 @@ function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setM
 function sh(n, head) { const ss = SpreadsheetApp.getActive(); let s = ss.getSheetByName(n); if (!s) { s = ss.insertSheet(n); if (head) s.appendRow(head); } return s; }
 function doPost(e) {
   const d = JSON.parse(e.postData.contents); if (d.k !== KEY) return out({ok: false, err: 'key'});
+  // 도면 이미지 받기 (목록 · 1장) — 읽기만이라 잠금 없이
+  if (d.a === 'imgs') return out({ok: true, imgs: imRows().map(x => ({k: x[0], t: +x[1] || 0, has: !!x[3]}))});
+  if (d.a === 'img') { const x = imRows().find(r => r[0] === d.key); return out({ok: true, data: x && x[3] ? DriveApp.getFileById(x[3]).getBlob().getDataAsString() : ''}); }
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     if (d.a === 'cfg') { sh('설정').getRange(1, 1).setValue(JSON.stringify(d.cfg)); return out({ok: true}); }
@@ -273,6 +276,16 @@ function doPost(e) {
       if (!fo.getFilesByName(nm).hasNext()) fo.createFile(nm, JSON.stringify(d.state), 'application/json');
       return out({ok: true});
     }
+    if (d.a === 'imgput') {   // 도면 이미지 올리기·지우기 (드라이브 '계통 도면' 폴더 + 시트 '도면목록')
+      const s = sh('도면목록', ['키', '시각', '누가', '파일ID']), v = s.getDataRange().getValues(); let r = 0;
+      v.forEach((x, i) => { if (i && x[0] === d.key) r = i + 1; });
+      if (r && v[r - 1][3]) { try { DriveApp.getFileById(v[r - 1][3]).setTrashed(true); } catch (_) {} }
+      const it = DriveApp.getFoldersByName('계통 도면'), fo = it.hasNext() ? it.next() : DriveApp.createFolder('계통 도면');
+      const id = d.data ? fo.createFile(encodeURIComponent(d.key) + '.txt', d.data, 'text/plain').getId() : '';
+      const val = [d.key, +d.t || Date.now(), d.by || '', id];
+      if (r) s.getRange(r, 1, 1, 4).setValues([val]); else s.appendRow(val);
+      return out({ok: true});
+    }
     if (d.a === 'rec') {
       const r = d.r, s1 = sh('순찰', ['날짜', '시간', '전기실', '순찰자', 'QR', '온도', '습도', '이상', '메모', 'id', 'json']);
       const s2 = sh('계측', ['날짜', '시간', '전기실', '배전반', 'V', 'A', 'kW', 'PF', '순찰자', 'id']);
@@ -285,6 +298,7 @@ function doPost(e) {
     return out({ok: false, err: 'a'});
   } finally { lock.releaseLock(); }
 }
+function imRows() { return sh('도면목록', ['키', '시각', '누가', '파일ID']).getDataRange().getValues().slice(1).filter(r => r[0]); }
 function syRows() { const v = sh('계통현재', ['키', '순번', '시각', '누가', '기기', 'json']).getDataRange().getValues(); return v.slice(1); }
 function doGet(e) {
   const p = e.parameter; if (p.k !== KEY) return out({ok: false, err: 'key'});
