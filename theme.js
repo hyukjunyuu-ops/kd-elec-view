@@ -153,7 +153,7 @@ body:not(.mob) #bEdit:before{content:'';position:absolute;left:8px;top:50%;width
 body:not(.mob) #bEdit:after{content:'';position:absolute;left:10px;top:50%;width:11px;height:11px;margin-top:-5.5px;border-radius:50%;background:#fff;transition:.15s}
 body:not(.mob) #bEdit.on{background:#fff7e6;border-color:#f79009;color:#b54708}body:not(.mob) #bEdit.on:before{background:#f79009}body:not(.mob) #bEdit.on:after{left:23px}
 body:not(.mob) main{padding:12px;gap:12px}
-body:not(.mob) #left{width:320px}body:not(.mob) #right{width:330px}
+body:not(.mob) #left{width:var(--lw,360px);position:relative}body:not(.mob) #right{width:330px}
 body:not(.mob) #view{padding:20px 24px}
 #lTabs button{border-radius:10px}
 /* ── 홈 ── */
@@ -181,4 +181,22 @@ body.mob #mbNav button svg{display:block}`;
   fillB();
   setTimeout(() => { const M = {patrol: 'pat', field: 'field', tree: 'tree', plan: 'plan', main: 'map', info: 'info'};
     document.querySelectorAll('#mbNav button').forEach(b => { const k = M[b.dataset.mv]; const sp = b.querySelector('span'); if (k && sp) b.innerHTML = thIc(k, 22) + sp.outerHTML; }); }, 0);
+})();
+
+// 계통 트리 폭: 오른쪽 가장자리를 끌어서 넓히기 (이름이 잘릴 때) · 더블클릭 = 기본 폭
+(function () {
+  const L = document.getElementById('left'); if (!L) return;
+  const set = w => { w = Math.max(260, Math.min(760, w)); document.body.style.setProperty('--lw', w + 'px'); return w; };
+  try { const w = +localStorage.getItem('ckd_lw'); if (w) set(w); } catch (e) {}
+  const g = document.createElement('div'); g.id = 'lwG'; g.title = '끌어서 트리 폭 조절 · 더블클릭 = 기본 폭'; L.appendChild(g);
+  g.addEventListener('pointerdown', e => {
+    e.preventDefault(); g.setPointerCapture(e.pointerId); const x0 = e.clientX, w0 = L.getBoundingClientRect().width; let w = w0;
+    const mv = ev => { w = set(w0 + ev.clientX - x0); };
+    const up = () => { g.removeEventListener('pointermove', mv); g.removeEventListener('pointerup', up); try { localStorage.setItem('ckd_lw', w); } catch (er) {} window.dispatchEvent(new Event('resize')); };
+    g.addEventListener('pointermove', mv); g.addEventListener('pointerup', up);
+  });
+  g.addEventListener('dblclick', () => { document.body.style.removeProperty('--lw'); try { localStorage.removeItem('ckd_lw'); } catch (e) {} window.dispatchEvent(new Event('resize')); });
+  const st = document.createElement('style');
+  st.textContent = '#lwG{position:absolute;top:0;right:-7px;width:8px;height:100%;cursor:col-resize;z-index:5;border-radius:4px}#lwG:hover,#lwG:active{background:#c7d2fe}body.mob #lwG{display:none}';
+  document.head.appendChild(st);
 })();
