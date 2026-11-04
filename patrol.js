@@ -132,8 +132,13 @@ function ptRoomH(rid) {
     <div class="ptSave"><button class="ptBig" data-pta="save">저장하고 다음 전기실 ▶</button></div></div>`;
 }
 function ptNew(rm, c) {
-  const old = ptTodayOf(rm.id);   // 오늘 이미 했으면 그걸 고치기
-  if (old) return JSON.parse(JSON.stringify(old));
+  const old = ptTodayOf(rm.id);   // 오늘 이미 했으면 그걸 고치기 — 배전반 목록은 지금 설정에 맞춤
+  if (old) {
+    const r = JSON.parse(JSON.stringify(old)), had = r.P || [], has = p => ['V', 'A', 'kW', 'PF'].some(k => p[k] !== '' && p[k] != null);
+    const P = (rm.panels || []).map(p => { const o = had.find(x => (p.nid && x.nid === p.nid) || x.n === p.n); return o ? Object.assign(o, {n: p.n, nid: p.nid || o.nid || '', nv: p.v || o.nv || ''}) : {n: p.n, nid: p.nid || '', nv: p.v || '', V: '', A: '', kW: '', PF: ''}; });
+    had.forEach(x => { if (!P.includes(x) && has(x)) P.push(x); });   // 설정에서 뺐어도 이미 적은 값은 남김
+    r.P = P; return r;
+  }
   return {id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), room: rm.id, rn: rm.name, items: {}, im: {}, t: '', h: '', memo: '',
     P: (rm.panels || []).map(p => ({n: p.n, nid: p.nid || '', nv: p.v || '', V: '', A: '', kW: '', PF: ''}))};
 }
