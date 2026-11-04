@@ -49,26 +49,58 @@ function mbJump(n) {
     const go = t.closest('[data-mbgo]');
     if (go) { UI.tab = go.dataset.mbgo; saveUI(); renderAll(); mbSet('main'); return; }
   });
-  // 트리·즐겨찾기에서 항목을 고르면 정보 화면으로 (펼치기 ▸ 누른 건 제외)
-  // 트리가 바로 다시 그려지므로 먼저(capture) 확인
+  // 트리·즐겨찾기에서 누르면: 고르기만 (+ 하위 펼치기/접기) → 아래 막대에서 [현장 입력] [정보] [위치] 골라서 이동
+  // (터치 실수로 바로 다른 화면으로 넘어가지 않게)
   document.addEventListener('click', e => {
     const t = e.target; if (!MB.on || !t.closest) return;
-    // 반이나 회로를 고르면 '현장' 화면으로 (반 → 회로 목록, 회로 → 입력 시트), 그 밖은 정보
-    if (t.closest('#tree .trow, #favBox .fv2R, #tree .srow') && !t.closest('.tg, .ck, [data-tg], [data-fvf], button')) setTimeout(() => {
-      const n = byId(UI.sel);
-      if (typeof FDS !== 'undefined' && n) {
-        if (fdIsBox(n)) { FDS.pid = n.id; FDS.ed = ''; fdKeep(); return mbSet('field'); }
-        const P = fdLeaf(n) ? pathOf(n).slice(0, -1).reverse().find(fdIsBox) : null;
-        if (P) { FDS.pid = P.id; FDS.ed = n.id; fdKeep(); return mbSet('field'); }
-      }
-      mbSet('info');
-    }, 0);
+    const row = t.closest('#tree .trow, #favBox .fv2R, #tree .srow');
+    if (row && !t.closest('.tg, .ck, [data-tg], [data-fvf], button')) {
+      // 트리가 바로 다시 그려지므로 지금 확인: 트리 줄인지 · 이미 골라져 있던 줄인지 (다시 누르면 접기)
+      const inTree = !!row.closest('#tree') && !!row.dataset.id, id = row.dataset.id, was = id === UI.sel;
+      setTimeout(() => {
+        const n = byId(UI.sel); if (!n) return;
+        if (inTree && n.id === id && kids(n.id).length && !UIX.edit) { if (!was || !UI.open.has(n.id)) UI.open.add(n.id); else UI.open.delete(n.id); saveUI(); renderTree(); }
+        mbActShow();
+      }, 0);
+    }
   }, true);
+  const bar = document.createElement('div'); bar.id = 'mbAct'; document.body.appendChild(bar);
+  window.mbGoField = n => {
+    if (typeof FDS !== 'undefined' && n) {
+      if (fdIsBox(n)) { FDS.pid = n.id; FDS.ed = ''; fdKeep(); return mbSet('field'); }
+      const P = fdLeaf(n) ? pathOf(n).slice(0, -1).reverse().find(fdIsBox) : null;
+      if (P) { FDS.pid = P.id; FDS.ed = n.id; fdKeep(); return mbSet('field'); }
+    }
+    mbSet('info');
+  };
+  window.mbActShow = () => {
+    const n = byId(UI.sel), b = document.getElementById('mbAct'); if (!b) return;
+    if (!n || document.body.dataset.mv !== 'tree') { b.classList.remove('on'); return; }
+    const box = typeof fdIsBox === 'function' && (fdIsBox(n) || (fdLeaf(n) && pathOf(n).slice(0, -1).some(fdIsBox)));
+    b.innerHTML = `<div class="nm"><span class="ty">${esc(tlabel(n))}</span><b>${esc(label(n))}</b><small>${esc(bk(n) || '')}${kids(n.id).length ? ' · 하위 ' + kids(n.id).length : ''}</small></div>
+      <div class="bt">${box ? '<button data-mba="field" class="pri">📋 현장 입력</button>' : ''}<button data-mba="info"${box ? '' : ' class="pri"'}>ℹ 정보</button><button data-mba="plan">📍 위치</button></div>`;
+    b.classList.add('on');
+  };
+  document.addEventListener('click', e => {
+    const a = e.target.closest && e.target.closest('#mbAct [data-mba]'); if (!a) return;
+    const n = byId(UI.sel), v = a.dataset.mba; document.getElementById('mbAct').classList.remove('on');
+    if (v === 'field') return mbGoField(n);
+    if (v === 'info') return mbSet('info');
+    if (v === 'plan') { UI.tab = 'plan'; saveUI(); renderAll(); mbSet('main'); }
+  });
+  { const _m = mbSet; mbSet = function (v) { _m.apply(this, arguments); if (typeof mbActShow === 'function') mbActShow(); }; }
 
   // 정보(보기 모드)에 바로가기 붙이기
   const _fv = uiFormView;
   uiFormView = function (n) { return mbJump(n) + _fv(n); };
 
+  const sa = document.createElement('style');
+  sa.textContent = `#mbAct{display:none}body.mob #mbAct.on{display:flex;position:fixed;left:0;right:0;bottom:58px;z-index:61;background:#fff;border-top:1px solid #dde1ea;box-shadow:0 -4px 14px rgba(15,23,42,.12);padding:8px 10px;gap:8px;align-items:center}
+body.mob #mbAct .nm{flex:1;min-width:0;display:flex;flex-direction:column}body.mob #mbAct .nm b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}body.mob #mbAct .nm small{color:#64748b;font-size:11.5px}
+body.mob #mbAct .ty{font-size:10.5px;color:#475569}body.mob #mbAct .bt{display:flex;gap:6px;flex:none}
+body.mob #mbAct button{padding:9px 11px;border:1px solid #d6dbe8;background:#fff;border-radius:10px;font-size:13px;font-weight:600}body.mob #mbAct button.pri{background:#262f7d;color:#fff;border-color:#262f7d}
+body.mob[data-mv="tree"] #left{padding-bottom:70px}`;
+  document.head.appendChild(sa);
   const s = document.createElement('style');
   s.textContent = `
 #mbNav{display:none}
