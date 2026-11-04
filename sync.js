@@ -94,8 +94,26 @@ async function syEnable() {
   const c = syCfg(); if (!c.url) return alert('먼저 [🔦 순찰 → 설정 ④]에 구글 시트 주소·비밀 키를 넣어 주세요.');
   if (!syWho()) { const w = (prompt('이름 (누가 고쳤는지 남겨요)', '') || '').trim(); if (!w) return; syLS('who', w); }
   let info; try { info = await syReq({a: 'info'}); } catch (e) { return alert('✘ 시트 연결 안 됨 — [연결 테스트]부터 해 보세요. (' + e.message + ')'); }
+  let mode = 'pull';
+  if (info.count > 0 && S.nodes.length) {
+    // 이 기기에도 데이터가 있음 → 고르게 (바꾸기 전에 항상 자동 백업)
+    mode = await new Promise(res => {
+      uiModal(`<h3>☁ 계통 동기화 켜기</h3><p>시트에 계통 데이터가 이미 있어요 (항목 <b>${info.count}</b>개). 이 기기에도 <b>${S.nodes.length}</b>개가 있어요.</p>
+        <div class="syCh"><button data-sych="merge" class="pri">합치기 <small>이 기기 것 + 시트 것 · 같은 항목은 <b>이 기기</b> 것으로 (추천)</small></button>
+        <button data-sych="pull">시트 것으로 바꾸기 <small>이 기기에만 있는 변경은 없어져요</small></button></div>
+        <p class="mu">어느 쪽이든 바꾸기 전에 이 기기 데이터를 <b>자동으로 백업</b>해요 (백업 파일 받기 + [동기화 켜기 전으로 되돌리기]).</p>
+        <div class="mdlA"><button data-sych="">취소</button></div>`, true);
+      const h = e => { const b = e.target.closest && e.target.closest('[data-sych]'); if (!b) return; document.removeEventListener('click', h, true); uiModalClose(); res(b.dataset.sych); };
+      document.addEventListener('click', h, true);
+    });
+    if (!mode) return;
+    await syPreBackup();
+  }
+  if (info.count > 0 && mode === 'merge') {
+    // 합치기: 내 것을 전부 '보낼 것'으로 → 올린 뒤 시트에만 있던 것을 받아옴 (같은 항목은 내 것이 나중이라 유지)
+    SY.base = {}; SY.q = []; SY.seq = 0; SY.on = true; syKeep(); renderAll(); await sySync(); toast('☁ 합쳐서 동기화를 켰어요. 바꾸기 전 데이터는 백업해 뒀어요.', false); return;
+  }
   if (info.count > 0) {
-    if (S.nodes.length && !confirm(`시트에 계통 데이터가 이미 있어요 (항목 ${info.count}개).\n\n이 기기 데이터를 시트의 최신으로 바꿀까요?\n(이 기기에만 있고 시트에 없는 변경은 사라져요 — 필요하면 먼저 백업을 받아 두세요)`)) return;
     const j = await syReq({a: 'pull', since: 0, dev: ''});
     SY.applying = true;
     const st = {nodes: []}; (j.ops || []).forEach(o => { if (o.v == null || o.v === '') return; const v = JSON.parse(o.v), [ty, ...r] = o.k.split(':'), id = r.join(':');
@@ -107,6 +125,17 @@ async function syEnable() {
     SY.base = syMap(); SY.q = []; SY.seq = j.seq || 0;
   } else { SY.base = {}; SY.q = []; SY.seq = 0; }   // 시트가 비었음 → 다음 동기화 때 전부 올림
   SY.on = true; syKeep(); renderAll(); await sySync(); toast('☁ 계통 데이터 동기화를 켰어요.', false);
+}
+// 동기화로 이 기기 데이터를 바꾸기 전: 백업 파일 받기 + 브라우저에 보관 (되돌리기용)
+async function syPreBackup() {
+  try { await DB.put('kv', 'preSync', {at: Date.now(), state: JSON.parse(JSON.stringify(S))}); } catch (e) {}
+  try { if (typeof exportBackup === 'function') await exportBackup(); } catch (e) {}
+}
+async function syRestorePre() {
+  let o = null; try { o = await DB.get('kv', 'preSync'); } catch (e) {}
+  if (!o || !o.state) return alert('되돌릴 백업이 없어요.');
+  if (!confirm(`${new Date(o.at).toLocaleString('ko-KR')} (동기화 켜기 직전) 데이터로 되돌릴까요?\n항목 ${(o.state.nodes || []).length}개\n\n동기화가 켜져 있으면 이 데이터가 시트로 올라가 다른 사람에게도 반영돼요.`)) return;
+  snap('동기화 전으로 되돌리기'); S = Object.assign(blank(), o.state); fixData(); dirty(); save(); renderAll(); toast('동기화 켜기 전 데이터로 되돌렸어요.', true);
 }
 function syDisable() { SY.on = false; syKeep(); syShow(); toast('계통 동기화를 껐어요 (이 기기 데이터는 그대로).', false); }
 
@@ -139,7 +168,7 @@ setTimeout(() => { if (SY.on) { if (!SY.base) SY.base = syMap(); syShow(); sySyn
   ptSetH = function (c) {
     const h = _ps.apply(this, arguments);
     const box = `<div class="syBox"><b>☁ 계통 데이터도 자동 동기화</b> <span class="mu">(3명이 같이 조사 · 고친 항목만 주고받음 · 도면 이미지는 제외)</span><br>
-      ${SY.on ? `<span class="ok">● 켜짐</span> · 보낼 것 ${SY.q.length} · 마지막 ${SY.last ? new Date(SY.last).toLocaleTimeString('ko-KR', {hour12: false}) : '-'}${SY.conf ? ' · 충돌 ' + SY.conf : ''}${SY.err ? ` · <span class="w">오류: ${esc(SY.err)}</span>` : ''} <button data-sya="now">지금 맞추기</button><button data-sya="off">끄기</button>`
+      ${SY.on ? `<span class="ok">● 켜짐</span> · 보낼 것 ${SY.q.length} · 마지막 ${SY.last ? new Date(SY.last).toLocaleTimeString('ko-KR', {hour12: false}) : '-'}${SY.conf ? ' · 충돌 ' + SY.conf : ''}${SY.err ? ` · <span class="w">오류: ${esc(SY.err)}</span>` : ''} <button data-sya="now">지금 맞추기</button><button data-sya="off">끄기</button><button data-sya="pre" title="동기화를 켤 때 자동으로 보관한 이 기기 데이터로">⟲ 켜기 전으로 되돌리기</button>`
         : `<button data-sya="on" class="pri">켜기</button> <span class="mu">시트 주소·키를 넣고 [연결 테스트]가 된 뒤에</span>`}</div>`;
     return h.replace('<div class="ptBt"><button data-pta="gas">', box + '<div class="ptBt"><button data-pta="gas">');
   };
@@ -149,6 +178,7 @@ document.addEventListener('click', e => {
   const a = b.dataset.sya;
   if (a === 'on') syEnable().then(() => renderView());
   else if (a === 'off') { syDisable(); renderView(); }
+  else if (a === 'pre') syRestorePre();
   else sySync().then(() => renderView());
 });
 // 순찰자 설정 링크에 계통 동기화도 같이 켜기 (#ps 에 sy=1)
@@ -161,6 +191,7 @@ document.addEventListener('click', e => {
 (function () {
   const s = document.createElement('style');
   s.textContent = `#syncSt{font-size:12px;cursor:pointer;white-space:nowrap}#syncSt.ok{color:#12b76a}#syncSt.q{color:#b54708}#syncSt.bad{color:#f04438;font-weight:700}
+#mdl .syCh{display:flex;flex-direction:column;gap:8px;margin:10px 0}#mdl .syCh button{text-align:left;padding:10px 12px;border:1px solid #d6dbe8;background:#fff;border-radius:10px;cursor:pointer;font-size:14px;font-weight:700}#mdl .syCh button.pri{background:#262f7d;color:#fff;border-color:#262f7d}#mdl .syCh small{display:block;font-weight:400;font-size:12px;opacity:.85;margin-top:2px}
 #view .syBox{margin:8px 0;padding:9px 11px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;font-size:13px}#view .syBox .ok{color:#12b76a;font-weight:700}#view .syBox .w{color:#c2410c}
 #view .syBox button{padding:4px 10px;border:1px solid #d6dbe8;background:#fff;border-radius:6px;cursor:pointer;font-size:12.5px;margin-left:4px}#view .syBox button.pri{background:#273382;color:#fff;border-color:#273382;margin-left:0}`;
   document.head.appendChild(s);

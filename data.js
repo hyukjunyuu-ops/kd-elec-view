@@ -139,6 +139,13 @@ async function exportBackup(){
 }
 async function importFile(file){
   let o;try{o=JSON.parse(await file.text());}catch(e){alert('JSON 파일을 읽지 못했어요.');return;}
+  // 구글 드라이브 '계통 스냅샷' 파일 (계통 상태만 · 도면 이미지는 그대로 둠)
+  if(o&&!o.app&&Array.isArray(o.nodes)&&o.cfg){
+    if(!confirm(`계통 스냅샷 파일이에요.\n항목 ${o.nodes.length}개 (도면 이미지는 이 기기 것을 그대로 둬요)\n\n지금 데이터를 이 스냅샷으로 바꿀까요?`))return;
+    try{if(typeof syPreBackup==='function'&&S.nodes.length)await DB.put('kv','preSync',{at:Date.now(),state:JSON.parse(JSON.stringify(S))});}catch(e){}
+    const logo=S.cfg&&S.cfg.logo;S=Object.assign(blank(),o);if(logo&&!S.cfg.logo)S.cfg.logo=logo;fixData();
+    UNDO=null;UI.sel='';save();renderAll();alert('스냅샷으로 복원했어요.'+(typeof SY!=='undefined'&&SY.on?' 동기화가 켜져 있어서 이 내용이 시트에도 올라가요.':''));return;
+  }
   if(o&&o.app===APP&&o.state){
     if(!confirm(`새 버전 백업이에요.\n항목 ${(o.state.nodes||[]).length}개 · 도면 ${Object.keys(o.images||{}).length}장\n\n지금 데이터를 이 백업으로 바꿀까요?`))return;
     S=Object.assign(blank(),o.state);fixData();
