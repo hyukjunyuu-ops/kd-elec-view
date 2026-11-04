@@ -61,6 +61,8 @@ function mbJump(n) {
         const n = byId(UI.sel); if (!n) return;
         if (inTree && n.id === id && kids(n.id).length && !UIX.edit) { if (!was || !UI.open.has(n.id)) UI.open.add(n.id); else UI.open.delete(n.id); saveUI(); renderTree(); }
         mbActShow();
+        const r = document.querySelector('#tree .trow.sel'), T = document.getElementById('tree'), bar = document.getElementById('mbAct');
+        if (r && T && bar && bar.classList.contains('on')) { const rb = r.getBoundingClientRect(), bt = bar.getBoundingClientRect().top; if (rb.bottom > bt - 8) T.scrollTop += rb.bottom - bt + 16; }
       }, 0);
     }
   }, true);
@@ -99,7 +101,8 @@ function mbJump(n) {
 body.mob #mbAct .nm{flex:1;min-width:0;display:flex;flex-direction:column}body.mob #mbAct .nm b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}body.mob #mbAct .nm small{color:#64748b;font-size:11.5px}
 body.mob #mbAct .ty{font-size:10.5px;color:#475569}body.mob #mbAct .bt{display:flex;gap:6px;flex:none}
 body.mob #mbAct button{padding:9px 11px;border:1px solid #d6dbe8;background:#fff;border-radius:10px;font-size:13px;font-weight:600}body.mob #mbAct button.pri{background:#262f7d;color:#fff;border-color:#262f7d}
-body.mob[data-mv="tree"] #left{padding-bottom:70px}`;
+body.mob[data-mv="tree"] #left{padding-bottom:70px}
+body.mob[data-mv="tree"] #tree{padding-bottom:96px;box-sizing:border-box;-webkit-overflow-scrolling:touch}`;
   document.head.appendChild(sa);
   const s = document.createElement('style');
   s.textContent = `
