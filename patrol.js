@@ -83,10 +83,10 @@ async function ptFetch() {   // 최근 기록 (3명 것 다) + 최신 설정
     // 시트의 순찰 설정(전기실·배전반 목록)이 더 새것이면 받기 — PC에서 고치면 핸드폰은 다음에 열 때 자동 반영
     const r2 = await fetch(`${c.url}?a=cfg&k=${encodeURIComponent(c.key)}`), j2 = await r2.json(), g = j2.ok && j2.cfg;
     // 이 PC 설정이 더 새것이면(또는 시트에 아직 없으면) 시트로 올리기
-    if (!ptOnly() && c.rooms.some(r => (r.panels || []).length) && (!g || !g.rooms || !g.at || (c.at || 0) > g.at)) { c.at = c.at || Date.now(); await ptPost({a: 'cfg', cfg: ptCfgOut(c)}); }
+    if (!ptOnly() && c.rooms.some(r => (r.panels || []).length) && (!g || !g.rooms || (c.at && (!g.at || c.at > g.at)))) { c.at = c.at || Date.now(); await ptPost({a: 'cfg', cfg: ptCfgOut(c)}); }
     else if (g && g.rooms) {
       if (ptOnly()) ptLS('cfg', Object.assign(g, {url: c.url, key: c.key}));
-      else if ((g.at || 0) > (c.at || 0) && S.cfg && S.cfg.patrol) { Object.assign(S.cfg.patrol, {rooms: g.rooms, items: g.items || c.items, lim: g.lim || c.lim, at: g.at}); if (typeof save === 'function') save(); }
+      else if ((g.at || 0) > (c.at || 0)) { if (S.cfg && S.cfg.patrol) { Object.assign(S.cfg.patrol, {rooms: g.rooms, items: g.items || c.items, lim: g.lim || c.lim, at: g.at}); if (typeof save === 'function') save(); } else ptLS('cfg', Object.assign({}, ptLS('cfg') || {}, g, {url: c.url, key: c.key})); }
       if (PT.draft && !ptTouched(PT.draft)) PT.draft = null;   // 아직 아무것도 안 적었으면 새 목록으로 다시
     }
   } catch (e) {}
@@ -446,6 +446,8 @@ async function ptScan() {
     ptFlush(); ptFetch();
   }, 0);
   window.addEventListener('online', ptFlush);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { ptFlush(); ptFetch(); } });
+  setInterval(() => { if (document.visibilityState === 'visible' && (document.body.dataset.mv === 'patrol' || (typeof UI !== 'undefined' && UI.tab === 'pat'))) ptFetch(); }, 60e3);
   // 핸드폰 아래 탭에 [🔦 순찰]
   const nav = document.getElementById('mbNav');
   if (nav) { const bt = document.createElement('button'); bt.dataset.mv = 'patrol'; bt.innerHTML = '🔦<span>순찰</span>'; nav.insertBefore(bt, nav.firstChild); }

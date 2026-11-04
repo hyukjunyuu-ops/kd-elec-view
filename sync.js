@@ -64,6 +64,7 @@ function syApply(ops) {
   if (gone.size) S.nodes = S.nodes.filter(x => !gone.has(x.id));
   syLog(lg);
   dirty(); save(); SY.applying = false; syKeep();
+  if (ops.some(o => o.k === 'c:patrol') && typeof PT !== 'undefined') { if (PT.draft && typeof ptTouched === 'function' && !ptTouched(PT.draft)) PT.draft = null; if (typeof ptRerender === 'function') ptRerender(); }
   return n;
 }
 async function syReq(body) {
