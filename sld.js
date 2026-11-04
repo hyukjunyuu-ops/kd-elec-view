@@ -40,7 +40,10 @@ function sdLayout() {
     if (o.kids.length > 1) {
       const pb = effBld(n), dest = k => { const st = [k]; while (st.length) { const q = st.shift(), b = effBld(q.n); if (b && b !== pb) return b; st.push(...q.kids); } return ''; };
       const ord = []; o.kids.forEach(k => { k.dst = dest(k); if (!ord.includes(k.dst)) ord.push(k.dst); });
-      o.kids = ord.flatMap(b => o.kids.filter(k => k.dst === b));
+      // 같은 동 안에서는 같은 함(이름 지정)끼리 붙여서 (2단 큐비클 등)
+      const ck = k => { const c = typeof cabOf === 'function' && cabOf(k.n); return c && !c.own ? c.k : 'x' + k.n.id; };
+      const byCab = A => { const co = []; A.forEach(k => { if (!co.includes(ck(k))) co.push(ck(k)); }); return co.flatMap(c => A.filter(k => ck(k) === c)); };
+      o.kids = ord.flatMap(b => byCab(o.kids.filter(k => k.dst === b)));
     }
     return o;
   }
@@ -65,8 +68,16 @@ function sdLayout() {
     .map(o => ({b: effBld(o.n), x1: o.x0 + 3, x2: o.x0 + o.w - 3, y1: o.y - 50, y2: bot(o) + 80, e: o}))
     .sort((a, c) => a.y1 - c.y1 || a.x1 - c.x1), boxes = [];
   bx.forEach(r => { const m = boxes.find(q => q.b === r.b && q.y1 === r.y1 && r.x1 - q.x2 <= 10 && r.x1 >= q.x1); if (m) { m.x2 = Math.max(m.x2, r.x2); m.y2 = Math.max(m.y2, r.y2); } else boxes.push(Object.assign({}, r)); });
+  // 설치 함: 그림에 2대 이상 보이는 함은 점선 상자
+  const cabs = [];
+  if (typeof cabOf === 'function') { const G = new Map(); nodes.forEach(o => { const c = cabOf(o.n); if (!c) return; if (!G.has(c.k)) G.set(c.k, {nm: c.nm, L: []}); G.get(c.k).L.push(o); });
+    G.forEach(g => { if (g.L.length < 2) return;
+      const x1 = Math.min(...g.L.map(o => o.x)) - 36, x2 = Math.max(...g.L.map(o => o.x)) + 40, y1 = Math.min(...g.L.map(o => o.y)) - 44, y2 = Math.max(...g.L.map(o => o.y)) + 30;
+      // 사이에 다른 함의 기호가 끼면 상자 대신 기호마다 작은 꼬리표
+      const between = nodes.some(o => !g.L.includes(o) && o.x > x1 + 6 && o.x < x2 - 6 && o.y >= y1 && o.y <= y2);
+      if (between) g.L.forEach(o => cabs.push({nm: g.nm, tag: 1, x: o.x, y: o.y})); else cabs.push({nm: g.nm, x1, x2, y1, y2}); }); }
   const W = Math.max(600, x + 40), H = Math.max(300, ...nodes.map(o => o.y + (o.kids.length ? 40 : 110)), ...boxes.map(q => q.y2 + 10));
-  return {roots, nodes, V, W, H, outside, boxes};
+  return {roots, nodes, V, W, H, outside, boxes, cabs};
 }
 
 /* ---------- 기호 ---------- */
@@ -125,6 +136,7 @@ function sdSvg(L, forPng) {
   (L.boxes || []).forEach(q => { const c = fpBcol(q.b), w = q.b.length * 12 + 12;
     o.push(`<g class="sdBx"><rect x="${q.x1}" y="${q.y1}" width="${q.x2 - q.x1}" height="${q.y2 - q.y1}" rx="14" fill="${c}" fill-opacity=".07" stroke="${c}" stroke-opacity=".55" stroke-width="1.6"/>`,
       `<rect x="${q.x1}" y="${q.y1}" width="${w}" height="20" rx="10" fill="${c}"/><text x="${q.x1 + w / 2}" y="${q.y1 + 14}" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">${esc(q.b)}</text></g>`); });
+  (L.cabs || []).forEach(q => o.push(q.tag ? `<g class="sdCab" pointer-events="none"><text x="${q.x + 8}" y="${q.y + 27}" font-size="9.5" fill="#6d28d9" paint-order="stroke" stroke="#fff" stroke-width="3">▣ ${esc(q.nm)}</text></g>` : `<g class="sdCab" pointer-events="none"><rect x="${q.x1}" y="${q.y1}" width="${q.x2 - q.x1}" height="${q.y2 - q.y1}" rx="6" fill="#f5f3ff" fill-opacity=".55" stroke="#7c3aed" stroke-width="1.3" stroke-dasharray="5 4"/><text x="${q.x1 + 5}" y="${q.y2 - 5}" font-size="9.5" fill="#6d28d9">▣ ${esc(q.nm)}</text></g>`));
   const col = n => dead(n.id) ? {c: '#cbd5e1', d: '', w: 2.2} : em(n.id) ? {c: '#dc2626', d: '9 6', w: 3.4} : fpLineCol(n);
   const seg = (x1, y1, x2, y2, c, hl, w) => `${hl && !forPng ? `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#fde047" stroke-width="${(w || c.w) + 7}" stroke-linecap="round"/>` : ''}<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c.c}" stroke-width="${w || c.w}"${c.d ? ` stroke-dasharray="${c.d}"` : ''} stroke-linecap="square">${c.c === '#dc2626' && c.d ? '<animate attributeName="stroke-dashoffset" from="30" to="0" dur="1s" repeatCount="indefinite"/>' : ''}</line>`;
 
