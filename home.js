@@ -94,8 +94,10 @@ function hmChart(S30, k, pfLo) {
   return `<svg class="hmCh" viewBox="0 0 ${W} ${H}" width="100%">${[0, .5, 1].map(a => { const y = t + a * (H - t - b), val = mx - a * (mx - mn); return `<line x1="${l}" x2="${W - r}" y1="${y}" y2="${y}" stroke="#eef0f4"/><text x="${l - 6}" y="${y + 4}" text-anchor="end" font-size="10" fill="#94a3b8">${f(val)}</text>`; }).join('')}
     ${k === 'PF' ? `<line x1="${l}" x2="${W - r}" y1="${Y(pfLo)}" y2="${Y(pfLo)}" stroke="#f97316" stroke-dasharray="5 4"/><text x="${W - r}" y="${Y(pfLo) - 4}" text-anchor="end" font-size="10" fill="#f97316">기준 ${pfLo}</text>` : ''}
     <polyline points="${pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}" fill="none" stroke="#262f7d" stroke-width="2.2" stroke-linejoin="round"/>
-    ${pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="3.2" fill="#fff" stroke="#262f7d" stroke-width="2"><title>${hmMD(p[3])} · ${p[2]}${k === 'PF' ? '' : k}</title></circle>`).join('')}
-    <text x="${l}" y="${H - 6}" font-size="10" fill="#94a3b8">${hmMD(S30[0].d)}</text><text x="${W - r}" y="${H - 6}" text-anchor="end" font-size="10" fill="#94a3b8">${hmMD(S30[S30.length - 1].d)}</text></svg>`;
+    ${S30.map((x, i) => i % 7 === (S30.length - 1) % 7 || i === 0 ? `<text x="${X(i)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === S30.length - 1 ? 'end' : 'middle'}" font-size="10" fill="#94a3b8">${hmMD(x.d)}</text>` : '').join('')}
+    ${pts.map((p, j) => { const wd = '일월화수목금토'[new Date(p[3] + 'T00:00:00').getDay()], tx = `${hmMD(p[3])} (${wd})  ${f(p[2])}${k === 'PF' ? '' : ' ' + k}`, w = tx.length * 6.4 + 14;
+      const bx = Math.max(l, Math.min(W - r - w, p[0] - w / 2)), by = p[1] - 34 < 2 ? p[1] + 10 : p[1] - 32;
+      return `<g class="hmPtG${j === pts.length - 1 ? ' on' : ''}"><circle cx="${p[0]}" cy="${p[1]}" r="11" fill="transparent"/><g class="lb"><line x1="${p[0]}" x2="${p[0]}" y1="${t}" y2="${H - b}" stroke="#c7d2fe" stroke-dasharray="3 3"/><rect x="${bx}" y="${by}" width="${w}" height="22" rx="6" fill="#262f7d"/><text x="${bx + w / 2}" y="${by + 15}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#fff">${tx}</text></g><circle class="dt" cx="${p[0]}" cy="${p[1]}" r="3.2" fill="#fff" stroke="#262f7d" stroke-width="2"/></g>`; }).join('')}</svg>`;
 }
 
 // 계통 조사 진행 (동별)
@@ -181,6 +183,10 @@ document.addEventListener('click', e => {
   const r = t.closest('[data-hmrow]'); if (r) { HM.open = HM.open === r.dataset.hmrow ? '' : r.dataset.hmrow; renderView(); }
 }, true);
 
+const hmPtOn = g => { const sv = g.closest('svg'); sv.querySelectorAll('.hmPtG.on').forEach(x => x.classList.remove('on')); g.classList.add('on'); sv.appendChild(g); };
+document.addEventListener('mouseover', e => { const g = e.target.closest && e.target.closest('.hmCh .hmPtG'); if (g && !g.classList.contains('on')) hmPtOn(g); });
+document.addEventListener('click', e => { const g = e.target.closest && e.target.closest('.hmCh .hmPtG'); if (g) { e.stopPropagation(); hmPtOn(g); } }, true);
+
 // 순찰 기록 보기 (읽기 전용) — 그날 값 + 최근 2주 흐름
 function hmRecModal(id) {
   const A = ptAll(), r = A.find(x => x.id === id); if (!r) return toast('기록을 찾을 수 없어요.', true);
@@ -230,7 +236,7 @@ document.addEventListener('click', e => {
 .hm .hmT td.bad{color:#c2410c;font-weight:700}.hm .hmT .hmSp{vertical-align:middle}.hm .hmNo{color:#a0a7b4;font-size:11.5px}
 .hm .hmX td{background:#fafbff;padding:8px 10px 10px}.hm .hmXb{display:flex;align-items:center;gap:10px;margin-bottom:4px}
 .hm .seg button{padding:3px 11px;border:1px solid #d6dbe8;background:#fff;font-size:12px;cursor:pointer}.hm .seg button:first-child{border-radius:7px 0 0 7px}.hm .seg button:last-child{border-radius:0 7px 7px 0}.hm .seg button.on{background:#262f7d;color:#fff;border-color:#262f7d}
-.hm .hmCh{display:block;max-width:760px}
+.hm .hmCh{display:block;max-width:760px}.hm .hmCh .hmPtG{cursor:pointer}.hm .hmCh .hmPtG .lb{display:none;pointer-events:none}.hm .hmCh .hmPtG.on .lb,.hm .hmCh:not(.hov) .hmPtG.on .lb{display:inline}.hm .hmCh .hmPtG.on .dt{fill:#262f7d;r:4.5}
 .hm .hmTh{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
 .hm .hmTc{border:1px solid var(--ln);border-radius:12px;padding:8px 10px;cursor:pointer}.hm .hmTc:hover{border-color:#c7d2fe}.hm .hmTc.hot{border-color:#fca5a5;background:#fef2f2}
 .hm .hmTc b{font-size:12.5px}.hm .hmTc .v em{font-style:normal;font-size:18px;font-weight:800}.hm .hmTc.hot .v em{color:#dc2626}.hm .hmTc .v small{color:var(--mu)}
