@@ -49,25 +49,25 @@ function hmIssues(c, RD) {
     const A = RD[rm.id] || [], last = A[A.length - 1]; if (!last || last.d < recent) return;
     const r = last.r, nm = rm.name.replace(/ 전기실$/, ''), when = last.d === today ? '' : ` (${hmMD(last.d)})`;
     const rise = k => { const v = A.slice(-3).map(x => +x.r[k]); return v.length === 3 && v.every(Number.isFinite) && v[0] < v[1] && v[1] < v[2] ? ' · 3일째 상승' : ''; };
-    if (hmNum(r.t) && +r.t >= L.tHi) out.push({lv: 2, t: `${nm} 전기실 온도 ${r.t}℃${when}`, s: `기준 ${L.tHi}℃${rise('t')}`, room: rm.id});
-    if (hmNum(r.h) && +r.h >= L.hHi) out.push({lv: 2, t: `${nm} 전기실 습도 ${r.h}%${when}`, s: `기준 ${L.hHi}%${rise('h')}`, room: rm.id});
+    if (hmNum(r.t) && +r.t >= L.tHi) out.push({lv: 2, t: `${nm} 전기실 온도 ${r.t}℃${when}`, s: `기준 ${L.tHi}℃${rise('t')}`, room: rm.id, rec: r.id});
+    if (hmNum(r.h) && +r.h >= L.hHi) out.push({lv: 2, t: `${nm} 전기실 습도 ${r.h}%${when}`, s: `기준 ${L.hHi}%${rise('h')}`, room: rm.id, rec: r.id});
     (r.P || []).forEach(p => {
       const nv = pV(p.nv), kv = nv >= 1000 && +p.V < 100;
-      if (hmNum(p.V) && nv && Math.abs(ptVolt(p.V, nv) - nv) / nv * 100 > L.vTol) out.push({lv: 2, t: `${p.n} 전압 ${p.V}${kv ? 'kV' : 'V'}${when}`, s: `정격 ${p.nv} ±${L.vTol}%`, room: rm.id});
-      if (hmNum(p.PF) && +p.PF > 0 && +p.PF < L.pfLo) out.push({lv: 1, t: `${p.n} 역률 ${p.PF}${when}`, s: `기준 ${L.pfLo}`, room: rm.id});
+      if (hmNum(p.V) && nv && Math.abs(ptVolt(p.V, nv) - nv) / nv * 100 > L.vTol) out.push({lv: 2, t: `${p.n} 전압 ${p.V}${kv ? 'kV' : 'V'}${when}`, s: `정격 ${p.nv} ±${L.vTol}%`, room: rm.id, rec: r.id});
+      if (hmNum(p.PF) && +p.PF > 0 && +p.PF < L.pfLo) out.push({lv: 1, t: `${p.n} 역률 ${p.PF}${when}`, s: `기준 ${L.pfLo}`, room: rm.id, rec: r.id});
       // 평소와 다름: 그날 전 14일 중간값과 비교 (3번 이상 쌓였을 때만)
       const H = hmPanel(A.filter(x => x.d < last.d && x.d >= hmDate(last.d, -14)), p.n);
       for (const [k, u, w] of [['A', 'A', '전류'], ['kW', 'kW', '전력']]) {
         if (!hmNum(p[k])) continue;
         const med = hmMed(H.map(x => hmNum(x[k]) ? +x[k] : NaN)), n = H.filter(x => hmNum(x[k])).length;
-        if (n >= 3 && med > 0) { const pc = (+p[k] - med) / med * 100; if (Math.abs(pc) >= HM.dev) { out.push({lv: 1, t: `${p.n} ${w} ${p[k]}${u}${when}`, s: `평소 ${Math.round(med * 10) / 10}${u}보다 ${pc > 0 ? '+' : ''}${Math.round(pc)}%`, room: rm.id}); break; } }
+        if (n >= 3 && med > 0) { const pc = (+p[k] - med) / med * 100; if (Math.abs(pc) >= HM.dev) { out.push({lv: 1, t: `${p.n} ${w} ${p[k]}${u}${when}`, s: `평소 ${Math.round(med * 10) / 10}${u}보다 ${pc > 0 ? '+' : ''}${Math.round(pc)}%`, room: rm.id, rec: r.id}); break; } }
       }
     });
   });
   // 외관 점검 '이상' — [조치 완료] 할 때까지 (최근 35일)
   (typeof ptAll === 'function' ? ptAll() : []).forEach(r => Object.entries(r.items || {}).forEach(([k, v]) => {
     if (v !== 'bad') return; const key = r.id + '|' + k; if (ack[key]) return;
-    out.push({lv: 0, t: `${hmMD(r.d)} ${String(r.rn || '').replace(/ 전기실$/, '')} ${k} 이상`, s: [(r.im || {})[k], r.who].filter(Boolean).join(' · '), ack: key, room: r.room});
+    out.push({lv: 0, t: `${hmMD(r.d)} ${String(r.rn || '').replace(/ 전기실$/, '')} ${k} 이상`, s: [(r.im || {})[k], r.who].filter(Boolean).join(' · '), ack: key, room: r.room, rec: r.id});
   }));
   return out.sort((a, b) => b.lv - a.lv);
 }
@@ -134,7 +134,7 @@ homeView = function () {
       <span class="hmLeft">${left.length ? '남은 곳: ' + left.map(x => `<span data-hmroom="${esc(x.rm.id)}">${nm(x.rm)}</span>`).join('') : '✔ 오늘 순찰 끝'}</span></a>
 
     <div class="thC hmI"><div class="thCh"><b>⚠ 확인할 것${I.length ? ` <span class="hmCnt">${I.length}</span>` : ''}</b><span class="sp"></span><span class="mu">기준 초과 · 평소와 다름(최근 2주 중간값 ±${HM.dev}%) · 미조치 이상</span></div>
-      ${I.length ? I.slice(0, 12).map(x => `<div class="hmIt lv${x.lv}"><span class="dot"></span><div class="s"><b>${esc(x.t)}</b>${x.s ? `<small>${esc(x.s)}</small>` : ''}</div>${x.ack ? `<button data-hmack="${esc(x.ack)}">조치 완료</button>` : x.room ? `<button data-hmroom="${esc(x.room)}" class="ln">기록 보기</button>` : ''}</div>`).join('')
+      ${I.length ? I.slice(0, 12).map(x => `<div class="hmIt lv${x.lv}"><span class="dot"></span><div class="s"><b>${esc(x.t)}</b>${x.s ? `<small>${esc(x.s)}</small>` : ''}</div>${x.rec ? `<button data-hmrec="${esc(x.rec)}" class="ln">기록 보기</button>` : ''}${x.ack ? `<button data-hmack="${esc(x.ack)}">조치 완료</button>` : ''}</div>`).join('')
         + (I.length > 12 ? `<div class="mu" style="padding:6px 4px">… 그 밖에 ${I.length - 12}건</div>` : '')
         : `<div class="hmOk">✔ 확인할 것 없음 <span class="mu">— 최근 순찰 값이 모두 기준 안이고 미조치 이상도 없어요</span></div>`}</div>
 
@@ -148,7 +148,7 @@ homeView = function () {
 
     <div class="thC"><div class="thCh"><b>전기실 온·습도</b><span class="mu" style="margin-left:6px">최근 7일</span></div>
       <div class="hmTh">${th.map(({rm, A, L}) => { const hot = L && hmNum(L.r.t) && +L.r.t >= c.lim.tHi;
-        return `<div class="hmTc${hot ? ' hot' : ''}" data-hmroom="${esc(rm.id)}"><b>${nm(rm)}</b><div class="v">${L && hmNum(L.r.t) ? `<em>${esc(L.r.t)}℃</em>` : '<span class="hmNo">최근 7일 기록 없음</span>'}${L && hmNum(L.r.h) ? ` <small>${esc(L.r.h)}%</small>` : ''}</div>${L ? hmSpark(A.map(x => x.r.t), 110, 22, hot ? '#dc2626' : '#0f766e', c.lim.tHi) : ''}</div>`; }).join('')}</div></div>
+        return `<div class="hmTc${hot ? ' hot' : ''}" ${L ? `data-hmrec="${esc(L.r.id)}"` : `data-hmroom="${esc(rm.id)}"`}><b>${nm(rm)}</b><div class="v">${L && hmNum(L.r.t) ? `<em>${esc(L.r.t)}℃</em>` : '<span class="hmNo">최근 7일 기록 없음</span>'}${L && hmNum(L.r.h) ? ` <small>${esc(L.r.h)}%</small>` : ''}</div>${L ? hmSpark(A.map(x => x.r.t), 110, 22, hot ? '#dc2626' : '#0f766e', c.lim.tHi) : ''}</div>`; }).join('')}</div></div>
 
     <div class="thTwo">${mmH()}
       <div class="thC"><div class="thCh"><b>최근 본 반</b></div>
@@ -175,14 +175,46 @@ document.addEventListener('click', e => {
   const a = t.closest('[data-hmack]');
   if (a) { e.preventDefault(); e.stopPropagation(); const m = prompt('조치 내용 (선택 · 비워도 돼요)', ''); if (m === null) return;
     hmAck()[a.dataset.hmack] = {by: (typeof ptWho === 'function' && ptWho()) || (typeof syWho === 'function' && syWho()) || '', at: Date.now(), m: m.trim()}; save(); renderView(); toast('조치 완료로 기록했어요.', false); return; }
+  const rc = t.closest('[data-hmrec]'); if (rc) { e.preventDefault(); e.stopPropagation(); hmRecModal(rc.dataset.hmrec); return; }
   const rm = t.closest('[data-hmroom]'); if (rm) { e.preventDefault(); e.stopPropagation(); if (typeof ptOpenRoom === 'function') { ptOpenRoom(rm.dataset.hmroom); renderAll(); } return; }
   const k = t.closest('[data-hmk]'); if (k) { HM.k = k.dataset.hmk; renderView(); return; }
   const r = t.closest('[data-hmrow]'); if (r) { HM.open = HM.open === r.dataset.hmrow ? '' : r.dataset.hmrow; renderView(); }
 }, true);
 
+// 순찰 기록 보기 (읽기 전용) — 그날 값 + 최근 2주 흐름
+function hmRecModal(id) {
+  const A = ptAll(), r = A.find(x => x.id === id); if (!r) return toast('기록을 찾을 수 없어요.', true);
+  const c = ptCfg(), prev = A.filter(x => x.room === r.room && x.d < r.d).pop(), B = r.bad || [];
+  const H = (hmDaily()[r.room] || []).filter(x => x.d <= r.d && x.d >= hmDate(r.d, -13));
+  const v = (val, u, bad) => val === '' || val == null ? '<span class="hmNo">–</span>' : `<span${bad ? ' class="bd"' : ''}>${esc(val)}${u}</span>`;
+  const bi = Object.entries(r.items || {}).filter(([, x]) => x === 'bad'), ack = hmAck();
+  const P = (r.P || []).map(p => { const S14 = hmPanel(H, p.n), k = S14.some(x => hmNum(x.kW)) ? 'kW' : 'A';
+    return `<tr><td><b>${esc(p.n)}</b></td><td class="r">${v(p.V, '', ptFieldBad('V', p.V, c, p))}</td><td class="r">${v(p.A, '', ptFieldBad('A', p.A, c, p, prev))}</td><td class="r">${v(p.kW, '', false)}</td><td class="r">${v(p.PF, '', ptFieldBad('PF', p.PF, c, p))}</td><td>${hmSpark(S14.map(x => x[k]), 90, 22, '#262f7d')} <span class="hmNo">${k}</span></td></tr>`; }).join('');
+  const wd = '일월화수목금토'[new Date(r.d + 'T00:00:00').getDay()], today = r.d === ptToday();
+  uiModal(`<div class="hmRec"><h3>🔦 ${esc(r.rn || r.room)} <span class="mu">${hmMD(r.d)} (${wd}) ${ptHM(r.ts)} · ${esc(r.who || '')}${r.qr ? ' · QR' : ''}${r.demo ? ' · 예시' : ''}</span></h3>
+    <div class="hmRs">${B.length ? `<span class="hmTg b">이상 ${B.length}</span> <b class="bd">${B.map(esc).join(' · ')}</b>` : '<span class="hmTg o">정상</span>'}</div>
+    <div class="hmRth"><div><small>온도</small>${v(r.t, '℃', ptFieldBad('t', r.t, c))}${hmSpark(H.map(x => x.r.t), 110, 24, '#ea580c', c.lim.tHi)}</div><div><small>습도</small>${v(r.h, '%', ptFieldBad('h', r.h, c))}${hmSpark(H.map(x => x.r.h), 110, 24, '#0284c7', c.lim.hHi)}</div></div>
+    ${P ? `<div class="hmTw"><table class="hmT"><thead><tr><th>배전반</th><th class="r">V</th><th class="r">A</th><th class="r">kW</th><th class="r">PF</th><th>최근 2주</th></tr></thead><tbody>${P}</tbody></table></div>` : ''}
+    ${bi.length ? `<div class="hmRi"><b>외관 점검 이상</b>${bi.map(([k]) => { const a = ack[r.id + '|' + k]; return `<div>· <b>${esc(k)}</b>${(r.im || {})[k] ? ` — ${esc(r.im[k])}` : ''}${a ? ` <span class="ok">✔ 조치 완료${a.by ? ' · ' + esc(a.by) : ''}${a.m ? ' · ' + esc(a.m) : ''}</span>` : ' <span class="bd">미조치</span>'}</div>`; }).join('')}</div>` : ''}
+    ${r.memo ? `<div class="hmRi"><b>메모</b><div>${esc(r.memo)}</div></div>` : ''}
+    <div class="mdlA">${today ? `<button data-hmedit="${esc(r.room)}">✏ 이 기록 고치기</button>` : ''}${typeof MB !== 'undefined' && MB.on ? '' : `<button data-hmday="${esc(r.d)}">그날 전체 순찰 보기</button>`}<button data-mdl="x" class="pri">닫기</button></div></div>`, true);
+}
+document.addEventListener('click', e => {
+  const t = e.target; if (!t.closest) return;
+  const ed = t.closest('[data-hmedit]'); if (ed) { uiModalClose(); ptOpenRoom(ed.dataset.hmedit); renderAll(); return; }
+  const dy = t.closest('[data-hmday]'); if (dy) { uiModalClose(); PT.day = dy.dataset.hmday; PT.tab = 'today'; PT.room = ''; UI.tab = 'pat'; if (typeof saveUI === 'function') saveUI(); renderAll(); }
+});
+
 (function () {
   const s = document.createElement('style');
   s.textContent = `
+#mdl .hmRec h3{margin:0 0 6px}#mdl .hmRec h3 .mu{font-size:13px;font-weight:400}#mdl .hmRec .bd{color:#c2410c;font-weight:700}#mdl .hmRec .hmRs{margin-bottom:10px;font-size:13px}
+#mdl .hmRec .hmTg{display:inline-block;white-space:nowrap;margin-right:6px;padding:1px 8px;border-radius:6px;font-size:12px;font-weight:700}#mdl .hmRec .hmTg.b{background:#fee2e2;color:#b91c1c}#mdl .hmRec .hmTg.o{background:#dcfce7;color:#15803d}
+#mdl .hmRec .hmRth{display:flex;gap:18px;margin-bottom:10px}#mdl .hmRec .hmRth>div{display:flex;align-items:center;gap:8px;font-size:15px}#mdl .hmRec .hmRth small{color:#64748b;font-size:12px}
+#mdl .hmRec .hmT{width:100%;border-collapse:collapse;font-size:13px}#mdl .hmRec .hmT th{text-align:left;color:#64748b;font-size:12px;padding:5px 8px;border-bottom:1px solid #e5e7eb}#mdl .hmRec .hmT td{padding:5px 8px;border-bottom:1px solid #f1f3f7;white-space:nowrap}#mdl .hmRec .r,#mdl .hmRec .hmT th.r{text-align:right}
+#mdl .hmRec .hmTw{overflow-x:auto}#mdl .hmRec .hmNo{color:#a0a7b4;font-size:11.5px}#mdl .hmRec .hmSp{vertical-align:middle}
+#mdl .hmRec .hmRi{margin-top:10px;font-size:13px;background:#f8fafc;border-radius:8px;padding:8px 10px}#mdl .hmRec .hmRi>b{display:block;margin-bottom:3px}#mdl .hmRec .ok{color:#15803d;font-size:12px}
+.hm .hmIt button+button{margin-left:4px}
 .hm .hmPt{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid var(--ln);border-radius:16px;padding:12px 16px;margin-bottom:14px;color:inherit;text-decoration:none;cursor:pointer}
 .hm .hmPt b{display:inline-flex;align-items:center;gap:6px;font-size:14px}.hm .hmPt b.n{font-size:18px}
 .hm .hmBar{display:flex;gap:3px}.hm .hmBar i{width:22px;height:10px;border-radius:3px;background:#e5e7eb}.hm .hmBar i.ok{background:#16a34a}.hm .hmBar i.wn{background:#f59e0b}
