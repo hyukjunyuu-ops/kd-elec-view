@@ -40,7 +40,7 @@ function pmData(ym) {
   const day = {};   // day[d][room] = 그날 마지막 기록 · who[d] = 그날 순찰자들
   const who = {};
   recs.forEach(r => { const D = day[r.d] = day[r.d] || {}; if (!D[r.room] || D[r.room].ts < r.ts) D[r.room] = r; (who[r.d] = who[r.d] || new Set()).add(r.who || ''); });
-  const days = [...Array(last)].map((_, i) => { const d = `${ym}-${String(i + 1).padStart(2, '0')}`, wd = new Date(Y, M - 1, i + 1).getDay(); return {d, n: i + 1, wd, fut: d > today}; });
+  const days = [...Array(last)].map((_, i) => { const d = `${ym}-${String(i + 1).padStart(2, '0')}`, wd = new Date(Y, M - 1, i + 1).getDay(); return {d, n: i + 1, wd, fut: d > today};}).filter(x => x.wd !== 0 || day[x.d]);   // 일요일은 순찰 안 함 (그날 기록이 있으면 표시)
   const daily = Object.values(day).flatMap(D => Object.values(D));   // 하루 마지막 기록들
   const past = days.filter(x => !x.fut), due = past.length * c.rooms.length, done = past.reduce((s, x) => s + c.rooms.filter(rm => day[x.d] && day[x.d][rm.id]).length, 0);
   const miss = []; past.forEach(x => c.rooms.forEach(rm => { if (!(day[x.d] && day[x.d][rm.id])) miss.push(`${x.n}일 ${rm.name.replace(/ 전기실$/, '')}`); }));
@@ -97,7 +97,7 @@ function pmDoc(D) {
   // 2장 — 일별 순찰 현황
   o.push(pmBr());
   o.push(pmP(pmR(`일별 순찰 현황 (${D.Y}년 ${D.M}월)`, {b: 1, sz: 24, c: TT}), {af: 30}));
-  o.push(pmP(pmR('○ 정상 · △ 이상 · 빈칸 미순찰 · 하루에 여러 번이면 마지막 기록 · 회색 줄 = 주말', {sz: 15, c: MU}), {af: 80}));
+  o.push(pmP(pmR('○ 정상 · △ 이상 · 빈칸 미순찰 · 하루에 여러 번이면 마지막 기록 · 회색 줄 = 토요일 · 일요일 제외', {sz: 15, c: MU}), {af: 80}));
   const R = D.c.rooms, dw = [620, 620], rw = Math.floor((W - 1240 - 3200) / R.length), ww = W - 1240 - rw * R.length;
   const cw = [...dw, ...R.map(() => rw), ww];
   o.push(pmT(cw, [{c: [{t: '일', w: cw[0], b: 1, fill: H, al: 'center', sz: 16}, {t: '요일', w: cw[1], b: 1, fill: H, al: 'center', sz: 16},
