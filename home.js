@@ -9,7 +9,7 @@
    조치 완료 기록은 S.cfg.ptAck → 계통 동기화로 3명이 같이 봐요
    ========================================================= */
 
-const HM = {open: '', k: 'kW', dev: 20, write: false, showDone: false, link: true};
+const HM = {th: '', thk: 't', open: '', k: 'kW', dev: 20, write: false, showDone: false, link: true};
 // 전달 사항
 const mmAll = () => Object.keys(S.cfg || {}).filter(k => k.startsWith('mm_')).map(k => S.cfg[k]).filter(Boolean);
 const mmWho = () => (typeof ptWho === 'function' && ptWho()) || (typeof syWho === 'function' && syWho()) || '';
@@ -72,6 +72,10 @@ function hmIssues(c, RD) {
   return out.sort((a, b) => b.lv - a.lv);
 }
 
+// 전기실 온습도 30일 (하루 마지막 기록)
+const hmTH = (rid, to) => { const T = to || ptToday(); return ((hmDaily()[rid]) || []).filter(x => x.d <= T && x.d >= hmDate(T, -29)).map(x => ({d: x.d, t: x.r.t, h: x.r.h, id: x.r.id})); };
+const hmTHo = (k, c) => k === 't' ? {u: '℃', lim: c.lim.tHi, col: '#ea580c'} : {u: '%', lim: c.lim.hHi, col: '#0284c7'};
+
 // 미니 그래프
 function hmSpark(vals, w, h, col, hi) {
   const v = vals.map(x => hmNum(x) ? +x : NaN), ok = v.filter(Number.isFinite);
@@ -84,20 +88,24 @@ function hmSpark(vals, w, h, col, hi) {
     + `<circle cx="${X(li)}" cy="${Y(v[li])}" r="2.6" fill="${col}"/></svg>`;
 }
 // 30일 그래프
-function hmChart(S30, k, pfLo) {
-  const W = 640, H = 170, l = 44, r = 12, t = 12, b = 26, v = S30.map(x => hmNum(x[k]) ? +x[k] : NaN), ok = v.filter(Number.isFinite);
+function hmChart(S30, k, pfLo, o) {
+  o = o || {}; const U = o.u != null ? o.u : k === 'PF' ? '' : ' ' + k, col = o.col || '#262f7d';
+  const W = 640, H = o.H || 170, l = 44, r = 12, t = 12, b = 26, v = S30.map(x => hmNum(x[k]) ? +x[k] : NaN), ok = v.filter(Number.isFinite);
   if (ok.length < 2) return '<div class="hmNo" style="padding:18px">30일 동안 기록이 2번 이상 쌓이면 그래프가 나와요.</div>';
   let mn = Math.min(...ok), mx = Math.max(...ok); if (k === 'PF') { mn = Math.min(mn, pfLo - .02); mx = Math.max(mx, 1); }
+  // 기준선: 값이 기준 근처면 같이 보이게 (너무 멀면 '기준 ○○ (위)'만)
+  const lim = k === 'PF' ? null : o.lim, limIn = lim != null && lim <= mx + Math.max(mx - mn, 2) * 1.2; if (limIn) mx = Math.max(mx, lim);
   const pad = (mx - mn) * .12 || 1; mn -= pad; mx += pad;
   const X = i => l + i * (W - l - r) / Math.max(1, v.length - 1), Y = x => t + (mx - x) / (mx - mn) * (H - t - b), f = x => Math.abs(x) >= 100 ? Math.round(x) : Math.round(x * 100) / 100;
   const pts = v.map((x, i) => Number.isFinite(x) ? [X(i), Y(x), x, S30[i].d] : null).filter(Boolean);
   return `<svg class="hmCh" viewBox="0 0 ${W} ${H}" width="100%">${[0, .5, 1].map(a => { const y = t + a * (H - t - b), val = mx - a * (mx - mn); return `<line x1="${l}" x2="${W - r}" y1="${y}" y2="${y}" stroke="#eef0f4"/><text x="${l - 6}" y="${y + 4}" text-anchor="end" font-size="10" fill="#94a3b8">${f(val)}</text>`; }).join('')}
     ${k === 'PF' ? `<line x1="${l}" x2="${W - r}" y1="${Y(pfLo)}" y2="${Y(pfLo)}" stroke="#f97316" stroke-dasharray="5 4"/><text x="${W - r}" y="${Y(pfLo) - 4}" text-anchor="end" font-size="10" fill="#f97316">기준 ${pfLo}</text>` : ''}
-    <polyline points="${pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}" fill="none" stroke="#262f7d" stroke-width="2.2" stroke-linejoin="round"/>
-    ${S30.map((x, i) => i % 7 === (S30.length - 1) % 7 || i === 0 ? `<text x="${X(i)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === S30.length - 1 ? 'end' : 'middle'}" font-size="10" fill="#94a3b8">${hmMD(x.d)}</text>` : '').join('')}
-    ${pts.map((p, j) => { const wd = '일월화수목금토'[new Date(p[3] + 'T00:00:00').getDay()], tx = `${hmMD(p[3])} (${wd})  ${f(p[2])}${k === 'PF' ? '' : ' ' + k}`, w = tx.length * 6.4 + 14;
+    ${lim != null ? limIn ? `<line x1="${l}" x2="${W - r}" y1="${Y(lim)}" y2="${Y(lim)}" stroke="#dc2626" stroke-dasharray="5 4"/><text x="${l + 4}" y="${Y(lim) - 4}" font-size="10" fill="#dc2626">기준 ${lim}${U.trim()}</text>` : `<text x="${l + 4}" y="${t + 8}" font-size="10" fill="#94a3b8">기준 ${lim}${U.trim()} 이상이면 빨강</text>` : ''}
+    <polyline points="${pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linejoin="round"/>
+    ${S30.map((x, i) => (i % 7 === (S30.length - 1) % 7 && i >= 4) || i === 0 ? `<text x="${X(i)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === S30.length - 1 ? 'end' : 'middle'}" font-size="10" fill="#94a3b8">${hmMD(x.d)}</text>` : '').join('')}
+    ${pts.map((p, j) => { const wd = '일월화수목금토'[new Date(p[3] + 'T00:00:00').getDay()], tx = `${hmMD(p[3])} (${wd})  ${f(p[2])}${U}`, w = tx.length * 6.4 + 14;
       const bx = Math.max(l, Math.min(W - r - w, p[0] - w / 2)), by = p[1] - 34 < 2 ? p[1] + 10 : p[1] - 32;
-      return `<g class="hmPtG${j === pts.length - 1 ? ' on' : ''}"><circle cx="${p[0]}" cy="${p[1]}" r="11" fill="transparent"/><g class="lb"><line x1="${p[0]}" x2="${p[0]}" y1="${t}" y2="${H - b}" stroke="#c7d2fe" stroke-dasharray="3 3"/><rect x="${bx}" y="${by}" width="${w}" height="22" rx="6" fill="#262f7d"/><text x="${bx + w / 2}" y="${by + 15}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#fff">${tx}</text></g><circle class="dt" cx="${p[0]}" cy="${p[1]}" r="3.2" fill="#fff" stroke="#262f7d" stroke-width="2"/></g>`; }).join('')}</svg>`;
+      return `<g class="hmPtG${j === pts.length - 1 ? ' on' : ''}"><circle cx="${p[0]}" cy="${p[1]}" r="11" fill="transparent"/><g class="lb"><line x1="${p[0]}" x2="${p[0]}" y1="${t}" y2="${H - b}" stroke="#c7d2fe" stroke-dasharray="3 3"/><rect x="${bx}" y="${by}" width="${w}" height="22" rx="6" fill="${col}"/><text x="${bx + w / 2}" y="${by + 15}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#fff">${tx}</text></g><circle class="dt" cx="${p[0]}" cy="${p[1]}" r="3.2" fill="${lim != null && p[2] >= lim ? '#dc2626' : '#fff'}" stroke="${lim != null && p[2] >= lim ? '#dc2626' : col}" stroke-width="2"/></g>`; }).join('')}</svg>`;
 }
 
 // 계통 조사 진행 (동별)
@@ -148,9 +156,12 @@ homeView = function () {
           + (HM.open === x.key ? `<tr class="hmX"><td colspan="8"><div class="hmXb"><span class="seg">${['kW', 'A', 'PF', 'V'].map(k => `<button data-hmk="${k}" class="${HM.k === k ? 'on' : ''}">${k}</button>`).join('')}</span><span class="mu">최근 30일 · 하루 마지막 순찰 값</span></div>${hmChart(x.all.filter(y => y.d >= hmDate(today, -29)), HM.k, c.lim.pfLo)}</td></tr>` : '');
       }).join('')}</tbody></table></div>` : `<div class="mu" style="padding:12px 4px">순찰 설정에서 전기실마다 계측할 배전반을 넣으면 여기 나와요. <a data-t2="pat">순찰 설정 열기</a></div>`}</div>
 
-    <div class="thC"><div class="thCh"><b>전기실 온·습도</b><span class="mu" style="margin-left:6px">최근 7일</span></div>
+    <div class="thC"><div class="thCh"><b>전기실 온·습도</b><span class="mu" style="margin-left:6px">최근 7일</span><span class="sp"></span><span class="mu">칸을 누르면 30일 그래프</span></div>
       <div class="hmTh">${th.map(({rm, A, L}) => { const hot = L && hmNum(L.r.t) && +L.r.t >= c.lim.tHi;
-        return `<div class="hmTc${hot ? ' hot' : ''}" ${L ? `data-hmrec="${esc(L.r.id)}"` : `data-hmroom="${esc(rm.id)}"`}><b>${nm(rm)}</b><div class="v">${L && hmNum(L.r.t) ? `<em>${esc(L.r.t)}℃</em>` : '<span class="hmNo">최근 7일 기록 없음</span>'}${L && hmNum(L.r.h) ? ` <small>${esc(L.r.h)}%</small>` : ''}</div>${L ? hmSpark(A.map(x => x.r.t), 110, 22, hot ? '#dc2626' : '#0f766e', c.lim.tHi) : ''}</div>`; }).join('')}</div></div>
+        return `<div class="hmTc${hot ? ' hot' : ''}${HM.th === rm.id ? ' on' : ''}" data-hmth="${esc(rm.id)}"><b>${nm(rm)}</b><div class="v">${L && hmNum(L.r.t) ? `<em>${esc(L.r.t)}℃</em>` : '<span class="hmNo">최근 7일 기록 없음</span>'}${L && hmNum(L.r.h) ? ` <small>${esc(L.r.h)}%</small>` : ''}</div>${L ? hmSpark(A.map(x => x.r.t), 110, 22, hot ? '#dc2626' : '#0f766e', c.lim.tHi) : ''}</div>`; }).join('')}</div>
+      ${(() => { const rm = c.rooms.find(x => x.id === HM.th); if (!rm) return ''; const D = hmTH(rm.id), L = D[D.length - 1];
+        return `<div class="hmThX"><div class="hmXb"><b>${nm(rm)}</b><span class="seg">${[['t', '온도'], ['h', '습도']].map(([k, l]) => `<button data-hmthk="${k}" class="${HM.thk === k ? 'on' : ''}">${l}</button>`).join('')}</span><span class="mu">최근 30일 · 하루 마지막 순찰 값</span><span class="sp"></span>${L ? `<button class="ln" data-hmrec="${esc(L.id)}">최근 기록 보기</button>` : ''}</div>
+          ${hmChart(D, HM.thk, 0, hmTHo(HM.thk, c))}</div>`; })()}</div>
 
     <div class="thTwo">${mmH()}
       <div class="thC"><div class="thCh"><b>최근 본 반</b></div>
@@ -179,6 +190,8 @@ document.addEventListener('click', e => {
     hmAck()[a.dataset.hmack] = {by: (typeof ptWho === 'function' && ptWho()) || (typeof syWho === 'function' && syWho()) || '', at: Date.now(), m: m.trim()}; save(); renderView(); toast('조치 완료로 기록했어요.', false); return; }
   const rc = t.closest('[data-hmrec]'); if (rc) { e.preventDefault(); e.stopPropagation(); hmRecModal(rc.dataset.hmrec); return; }
   const rm = t.closest('[data-hmroom]'); if (rm) { e.preventDefault(); e.stopPropagation(); if (typeof ptOpenRoom === 'function') { ptOpenRoom(rm.dataset.hmroom); renderAll(); } return; }
+  const tk = t.closest('[data-hmthk]'); if (tk) { HM.thk = tk.dataset.hmthk; renderView(); return; }
+  const tc = t.closest('[data-hmth]'); if (tc) { HM.th = HM.th === tc.dataset.hmth ? '' : tc.dataset.hmth; renderView(); return; }
   const k = t.closest('[data-hmk]'); if (k) { HM.k = k.dataset.hmk; renderView(); return; }
   const r = t.closest('[data-hmrow]'); if (r) { HM.open = HM.open === r.dataset.hmrow ? '' : r.dataset.hmrow; renderView(); }
 }, true);
@@ -199,7 +212,8 @@ function hmRecModal(id) {
   const wd = '일월화수목금토'[new Date(r.d + 'T00:00:00').getDay()], today = r.d === ptToday();
   uiModal(`<div class="hmRec"><h3>🔦 ${esc(r.rn || r.room)} <span class="mu">${hmMD(r.d)} (${wd}) ${ptHM(r.ts)} · ${esc(r.who || '')}${r.qr ? ' · QR' : ''}${r.demo ? ' · 예시' : ''}</span></h3>
     <div class="hmRs">${B.length ? `<span class="hmTg b">이상 ${B.length}</span> <b class="bd">${B.map(esc).join(' · ')}</b>` : '<span class="hmTg o">정상</span>'}</div>
-    <div class="hmRth"><div><small>온도</small>${v(r.t, '℃', ptFieldBad('t', r.t, c))}${hmSpark(H.map(x => x.r.t), 110, 24, '#ea580c', c.lim.tHi)}</div><div><small>습도</small>${v(r.h, '%', ptFieldBad('h', r.h, c))}${hmSpark(H.map(x => x.r.h), 110, 24, '#0284c7', c.lim.hHi)}</div></div>
+    ${(() => { const D = hmTH(r.room, r.d); return `<div class="hmRth"><div><div class="hd"><small>온도</small>${v(r.t, '℃', ptFieldBad('t', r.t, c))}</div>${hmChart(D, 't', 0, Object.assign(hmTHo('t', c), {H: 140}))}</div>
+      <div><div class="hd"><small>습도</small>${v(r.h, '%', ptFieldBad('h', r.h, c))}</div>${hmChart(D, 'h', 0, Object.assign(hmTHo('h', c), {H: 140}))}</div></div>`; })()}
     ${P ? `<div class="hmTw"><table class="hmT"><thead><tr><th>배전반</th><th class="r">V</th><th class="r">A</th><th class="r">kW</th><th class="r">PF</th><th>최근 2주</th></tr></thead><tbody>${P}</tbody></table></div>` : ''}
     ${bi.length ? `<div class="hmRi"><b>외관 점검 이상</b>${bi.map(([k]) => { const a = ack[r.id + '|' + k]; return `<div>· <b>${esc(k)}</b>${(r.im || {})[k] ? ` — ${esc(r.im[k])}` : ''}${a ? ` <span class="ok">✔ 조치 완료${a.by ? ' · ' + esc(a.by) : ''}${a.m ? ' · ' + esc(a.m) : ''}</span>` : ' <span class="bd">미조치</span>'}</div>`; }).join('')}</div>` : ''}
     ${r.memo ? `<div class="hmRi"><b>메모</b><div>${esc(r.memo)}</div></div>` : ''}
@@ -216,7 +230,7 @@ document.addEventListener('click', e => {
   s.textContent = `
 #mdl .hmRec h3{margin:0 0 6px}#mdl .hmRec h3 .mu{font-size:13px;font-weight:400}#mdl .hmRec .bd{color:#c2410c;font-weight:700}#mdl .hmRec .hmRs{margin-bottom:10px;font-size:13px}
 #mdl .hmRec .hmTg{display:inline-block;white-space:nowrap;margin-right:6px;padding:1px 8px;border-radius:6px;font-size:12px;font-weight:700}#mdl .hmRec .hmTg.b{background:#fee2e2;color:#b91c1c}#mdl .hmRec .hmTg.o{background:#dcfce7;color:#15803d}
-#mdl .hmRec .hmRth{display:flex;gap:18px;margin-bottom:10px}#mdl .hmRec .hmRth>div{display:flex;align-items:center;gap:8px;font-size:15px}#mdl .hmRec .hmRth small{color:#64748b;font-size:12px}
+#mdl .hmRec .hmRth{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px}#mdl .hmRec .hmRth .hd{display:flex;align-items:center;gap:8px;font-size:15px}body.mob #mdl .hmRec .hmRth{grid-template-columns:1fr}#mdl .hmRec .hmRth small{color:#64748b;font-size:12px}
 #mdl .hmRec .hmT{width:100%;border-collapse:collapse;font-size:13px}#mdl .hmRec .hmT th{text-align:left;color:#64748b;font-size:12px;padding:5px 8px;border-bottom:1px solid #e5e7eb}#mdl .hmRec .hmT td{padding:5px 8px;border-bottom:1px solid #f1f3f7;white-space:nowrap}#mdl .hmRec .r,#mdl .hmRec .hmT th.r{text-align:right}
 #mdl .hmRec .hmTw{overflow-x:auto}#mdl .hmRec .hmNo{color:#a0a7b4;font-size:11.5px}#mdl .hmRec .hmSp{vertical-align:middle}
 #mdl .hmRec .hmRi{margin-top:10px;font-size:13px;background:#f8fafc;border-radius:8px;padding:8px 10px}#mdl .hmRec .hmRi>b{display:block;margin-bottom:3px}#mdl .hmRec .ok{color:#15803d;font-size:12px}
@@ -236,7 +250,9 @@ document.addEventListener('click', e => {
 .hm .hmT td.bad{color:#c2410c;font-weight:700}.hm .hmT .hmSp{vertical-align:middle}.hm .hmNo{color:#a0a7b4;font-size:11.5px}
 .hm .hmX td{background:#fafbff;padding:8px 10px 10px}.hm .hmXb{display:flex;align-items:center;gap:10px;margin-bottom:4px}
 .hm .seg button{padding:3px 11px;border:1px solid #d6dbe8;background:#fff;font-size:12px;cursor:pointer}.hm .seg button:first-child{border-radius:7px 0 0 7px}.hm .seg button:last-child{border-radius:0 7px 7px 0}.hm .seg button.on{background:#262f7d;color:#fff;border-color:#262f7d}
-.hm .hmCh{display:block;max-width:760px}.hm .hmCh .hmPtG{cursor:pointer}.hm .hmCh .hmPtG .lb{display:none;pointer-events:none}.hm .hmCh .hmPtG.on .lb,.hm .hmCh:not(.hov) .hmPtG.on .lb{display:inline}.hm .hmCh .hmPtG.on .dt{fill:#262f7d;r:4.5}
+.hmCh{display:block;max-width:760px}.hmCh .hmPtG{cursor:pointer}.hmCh .hmPtG .lb{display:none;pointer-events:none}.hmCh .hmPtG.on .lb{display:inline}.hmCh .hmPtG.on .dt{r:4.5}
+.hm .hmTc.on{border-color:#262f7d;box-shadow:0 0 0 1px #262f7d inset}.hm .hmThX{margin-top:10px;padding:10px 12px;background:#fafbff;border:1px solid var(--ln);border-radius:12px}
+.hm .hmThX .hmXb b{font-size:14px}.hm .hmThX button.ln{padding:4px 11px;border-radius:8px;border:1px solid #c7d2fe;background:#fff;color:#262f7d;font-size:12px;cursor:pointer}
 .hm .hmTh{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
 .hm .hmTc{border:1px solid var(--ln);border-radius:12px;padding:8px 10px;cursor:pointer}.hm .hmTc:hover{border-color:#c7d2fe}.hm .hmTc.hot{border-color:#fca5a5;background:#fef2f2}
 .hm .hmTc b{font-size:12.5px}.hm .hmTc .v em{font-style:normal;font-size:18px;font-weight:800}.hm .hmTc.hot .v em{color:#dc2626}.hm .hmTc .v small{color:var(--mu)}
