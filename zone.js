@@ -12,9 +12,11 @@ const ZI = new Set();
   I.put = (k, v) => put(k, v).then(r => { ZI.add(k); return r; });
   I.del = k => del(k).then(r => { ZI.delete(k); return r; });
   I.clear = () => clr().then(r => { ZI.clear(); return r; });
-  (async () => { try { ((await I.keys()) || []).forEach(k => ZI.add(k)); } catch (e) {} try { renderTree(); if (/^(zone|plan)$/.test(UI.tab)) renderView(); } catch (e) {} })();
+  // 처음 열 때: 저장소(DB)가 열린 뒤에 이미지 목록 읽기 (먼저 읽으면 빈 목록 → 새로고침하면 도면이 없는 것처럼 보였음)
+  (async () => { for (let i = 0; i < 200 && !DB.db; i++) await new Promise(r => setTimeout(r, 50));
+    try { ((await I.keys()) || []).forEach(k => ZI.add(k)); } catch (e) {} try { if (S && S.zones) { renderTree(); if (/^(zone|plan)$/.test(UI.tab)) renderView(); } } catch (e) {} })();
 }
-const zoSheets = id => { const c = S.zones[id] || 0, a = []; for (let i = 1; i <= c; i++) if (ZI.has(plZK(id, i))) a.push(i); return a; };   // 이미지 있는 장 번호
+const zoSheets = id => { const c = (S.zones || {})[id] || 0, a = []; for (let i = 1; i <= c; i++) if (ZI.has(plZK(id, i))) a.push(i); return a; };   // 이미지 있는 장 번호
 { const _pt = plTarget; plTarget = function (n) { const t = _pt(n), P = plParse(t); return UI.tab === 'plan' && P && P.z ? plFloorOf(n) : t; }; }
 // 고른 항목의 부하도면 반: 반이면 그 반, 회로면 위쪽 반
 function zoTarget() { const s = byId(UI.sel); if (!s) return null; return PL_P(s.type) ? s : plHost(s); }
@@ -26,7 +28,7 @@ function zoneView() {
   }
   let P = plParse(PL.cur);
   if (!P || !P.z || !byId(P.id)) {   // 아직 고른 반이 없으면 부하도면 있는 첫 반
-    const T = zoTarget(), first = Object.keys(S.zones).find(id => byId(id) && zoSheets(id).length);
+    const T = zoTarget(), first = Object.keys(S.zones || {}).find(id => byId(id) && zoSheets(id).length);
     const id = T ? T.id : first; if (id) { PL.cur = plZK(id, 1); PL.keep = true; P = plParse(PL.cur); }
   }
   if (!P || !P.z) return `<div class="zoneV"><div class="empty">왼쪽 트리에서 분전반·배전반·MCC반을 고르면 그 반 부하도면이 나와요.<br><span class="muted">부하도면이 있는 반은 트리에 <span class="zb">📄</span> 표시가 붙어 있어요.</span></div></div>`;
