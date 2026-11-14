@@ -120,7 +120,7 @@ function ptRoomH(rid) {
   const num = (k, v, ph, p, u, step) => `<label class="ptN${ptFieldBad(k, v, c, p, prev) ? ' bad' : ''}"><em>${k === 't' ? '온도' : k === 'h' ? '습도' : k}</em><input type="text" inputmode="decimal" enterkeyhint="next" data-ptk="${k}"${p ? ` data-ptp="${esc(p.n)}"` : ''} value="${esc(v === undefined ? '' : v)}" placeholder="${esc(ph)}"><small>${u}</small></label>`;
   const pv = (p, k) => { const q = prev && (prev.P || []).find(x => x.n === p.n); return q && q[k] !== '' && q[k] != null ? String(q[k]) : ''; };
   const bad = ptCheck(cur, c, prev);
-  return `<div class="ptW rm"><div class="ptHd"><button data-pta="home">‹</button><b>${esc(rm.name)}</b><span>${i + 1}/${c.rooms.length}</span></div>
+  return `<div class="ptW rm"><div class="ptHd"><button data-pta="home">‹</button><b>${esc(rm.name)}</b><span>${i + 1}/${c.rooms.length}</span></div>${c.at ? `<div class="ptCfgAt">배전반 목록: ${(d => `${d.getMonth() + 1}/${d.getDate()} ${ptHM(d)}`)(new Date(c.at))} 설정 기준</div>` : ''}
     ${PT.qr ? '<div class="ptQ">📷 QR로 열림 · ' + ptHM(PT.start) + '</div>' : ''}
     <div class="ptS"><div class="ptSh"><b>외관 점검</b><span class="mu">기본 정상 · 이상만 누르세요</span></div>${(c.items || []).map(it).join('')}</div>
     <div class="ptS"><div class="ptSh"><b>실내 환경</b>${prev ? `<span class="mu">어제 ${prev.t ?? '-'}℃ · ${prev.h ?? '-'}%</span>` : ''}</div><div class="ptG">${num('t', cur.t, prev ? prev.t : '', null, '℃')}${num('h', cur.h, prev ? prev.h : '', null, '%')}</div></div>
@@ -387,7 +387,7 @@ document.addEventListener('click', async e => {
   if (a === 'gas') return uiModal(ptGasH(), true);
   if (a === 'gascopy') { try { await navigator.clipboard.writeText(PT_GAS); toast('코드를 복사했어요.', false); } catch (_) { alert('복사가 막혔어요. 상자 안 코드를 직접 복사해 주세요.'); } return; }
   if (a === 'test') return alert(await ptDiag());
-  if (a === 'push') { c.at = c.at || Date.now(); const cfg = ptCfgOut(c);
+  if (a === 'push') { c.at = Date.now(); if (typeof save === 'function') save(); const cfg = ptCfgOut(c);
     const ok = await ptPost({a: 'cfg', cfg}); return alert(ok ? '✔ 시트에 설정을 보냈어요. 순찰자 핸드폰이 다음에 열 때 받아요.' : '✘ 보내기 실패 — [연결 테스트]부터 해 보세요.'); }
   if (a === 'setup') { const u = ptSetupLink();
     return uiModal(`<h3>📱 순찰자 핸드폰 설정</h3><p>순찰자 핸드폰에서 이 링크를 <b>한 번</b> 열면 순찰 전용 화면이 돼요 (카톡으로 보내기). 또는 아래 QR을 찍어도 돼요.</p>
@@ -446,9 +446,10 @@ async function ptScan() {
   // 순찰 전용 핸드폰 · QR로 들어옴 → 순찰 화면
   setTimeout(() => {
     if (ptOnly()) document.body.classList.add('ptOnly');
-    if (q) { ptOpenRoom(decodeURIComponent(q[1]), 1); history.replaceState(null, '', ptBase()); }
-    else if (ptOnly() && typeof mbSet === 'function') mbSet('patrol');
-    ptFlush(); ptFetch();
+    if (q) { const rid = decodeURIComponent(q[1]); history.replaceState(null, '', ptBase());
+      // 최신 배전반 목록을 먼저 받고 열기 (안 받고 열면 이 핸드폰에 남은 예전 목록이 나옴)
+      Promise.race([ptFetch(), new Promise(r => setTimeout(r, 4000))]).finally(() => ptOpenRoom(rid, 1)); ptFlush(); }
+    else { if (ptOnly() && typeof mbSet === 'function') mbSet('patrol'); ptFlush(); ptFetch(); }
   }, 0);
   window.addEventListener('online', ptFlush);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { ptFlush(); ptFetch(); } });
@@ -466,6 +467,7 @@ body.ptOnly #mbNav button:not([data-mv="patrol"]),body.ptOnly #bldBar,body.ptOnl
 .ptW input,.ptW textarea{font-size:16px;font-family:inherit;box-sizing:border-box}
 .ptW>input{width:100%;padding:12px;border:1.5px solid #c7d2fe;border-radius:12px;margin:8px 0}
 .ptBig{width:100%;padding:15px;border:0;border-radius:14px;background:#262f7d;color:#fff;font-size:17px;font-weight:700;margin-top:10px;cursor:pointer}
+.ptCfgAt{font-size:11.5px;color:#94a3b8;margin:-4px 0 6px 50px}
 .ptHd{display:flex;align-items:center;gap:8px;position:sticky;top:0;background:#f4f6fa;padding:4px 0 8px;z-index:2}.ptHd b{font-size:18px;flex:1}.ptHd span{color:#64748b;font-size:13px}
 .ptHd button{width:42px;height:42px;border:1px solid #d6dbe8;background:#fff;border-radius:10px;font-size:24px}
 .ptPr{height:10px;background:#e2e8f0;border-radius:6px;overflow:hidden;margin:2px 0 4px}.ptPr i{display:block;height:100%;background:#16a34a}
